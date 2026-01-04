@@ -1,9 +1,13 @@
 """
 背景修复模块 - 擦除原文字
+支持 OpenCV（默认）和 Qwen-Image-Edit-2511（AI 模式）
 """
 import cv2
 import numpy as np
 from typing import List, Tuple, Optional
+from PIL import Image
+import io
+import base64
 
 from ..config import config
 from ..models.schemas import TextBox
@@ -17,13 +21,17 @@ class Inpainter:
         初始化修复器
 
         Args:
-            mode: 修复模式 - "opencv" 或 "lama"
+            mode: 修复模式 - "opencv" 或 "qwen"
         """
         self.mode = mode
         self.opencv_radius = config.inpaint.opencv_radius
         self.opencv_method = config.inpaint.opencv_method
         self.sample_padding = config.inpaint.sample_padding
         self.blur_kernel = config.inpaint.blur_kernel
+        self.mask_expand = getattr(config.inpaint, 'mask_expand', 8)
+
+        # Qwen 客户端（延迟初始化）
+        self._qwen_client = None
 
     def inpaint(self, image: np.ndarray, text_boxes: List[TextBox]) -> np.ndarray:
         """
@@ -36,20 +44,105 @@ class Inpainter:
         Returns:
             修复后的图像
         """
+        if not text_boxes:
+            return image.copy()
+
+        # 先进行 bbox 聚类
+        clusters = self._cluster_boxes(text_boxes)
+        print(f"[Inpaint] 聚类结果: {len(text_boxes)} 个框 -> {len(clusters)} 个聚类")
+
         if self.mode == "opencv":
-            return self._inpaint_opencv(image, text_boxes)
-        elif self.mode == "lama":
-            return self._inpaint_lama(image, text_boxes)
+            return self._inpaint_opencv(image, text_boxes, clusters)
+        elif self.mode == "qwen":
+            return self._inpaint_qwen(image, text_boxes, clusters)
         else:
-            return self._inpaint_opencv(image, text_boxes)
+            return self._inpaint_opencv(image, text_boxes, clusters)
+
+    def _cluster_boxes(self, text_boxes: List[TextBox], y_threshold_ratio: float = 1.5) -> List[List[TextBox]]:
+        """
+        聚类相邻的文字框
+
+        规则: x轴有重叠 + y距离 < 1.5 × 平均高度 -> 合并到同一聚类
+
+        Args:
+            text_boxes: 文字框列表
+            y_threshold_ratio: y方向阈值比例
+
+        Returns:
+            聚类后的文字框列表，每个元素是一组相邻的文字框
+        """
+        if not text_boxes:
+            return []
+
+        # 过滤掉 skip 的框
+        active_boxes = [b for b in text_boxes if not b.skip]
+        if not active_boxes:
+            return []
+
+        # 计算平均高度
+        avg_height = sum(b.height for b in active_boxes) / len(active_boxes)
+        y_threshold = avg_height * y_threshold_ratio
+
+        # 按 y 坐标排序
+        sorted_boxes = sorted(active_boxes, key=lambda b: b.bbox[1])
+
+        clusters = []
+        current_cluster = [sorted_boxes[0]]
+
+        for box in sorted_boxes[1:]:
+            # 检查是否与当前聚类中的任何框相邻
+            should_merge = False
+
+            for cluster_box in current_cluster:
+                # 检查 x 轴重叠
+                x_overlap = self._check_x_overlap(box.bbox, cluster_box.bbox)
+                # 检查 y 距离
+                y_distance = abs(box.bbox[1] - cluster_box.bbox[3])
+
+                if x_overlap and y_distance < y_threshold:
+                    should_merge = True
+                    break
+
+            if should_merge:
+                current_cluster.append(box)
+            else:
+                clusters.append(current_cluster)
+                current_cluster = [box]
+
+        # 添加最后一个聚类
+        if current_cluster:
+            clusters.append(current_cluster)
+
+        return clusters
+
+    def _check_x_overlap(self, bbox1: List[int], bbox2: List[int]) -> bool:
+        """检查两个 bbox 在 x 轴是否有重叠"""
+        x1_min, _, x1_max, _ = bbox1
+        x2_min, _, x2_max, _ = bbox2
+
+        # 有重叠条件：一个框的右边界 > 另一个框的左边界
+        return x1_max > x2_min and x2_max > x1_min
 
     def _create_mask(
         self,
         image_shape: Tuple[int, int],
         text_boxes: List[TextBox],
-        expand: int = 3
+        expand: int = None
     ) -> np.ndarray:
-        """创建文字区域的mask"""
+        """
+        创建文字区域的 binary mask
+
+        Args:
+            image_shape: 图像尺寸 (h, w)
+            text_boxes: 文字框列表
+            expand: 扩展像素数，默认使用配置值
+
+        Returns:
+            mask: 白色=要擦除的区域，黑色=保留
+        """
+        if expand is None:
+            expand = self.mask_expand
+
         h, w = image_shape[:2]
         mask = np.zeros((h, w), dtype=np.uint8)
 
@@ -59,7 +152,7 @@ class Inpainter:
 
             x1, y1, x2, y2 = box.bbox
 
-            # 扩展区域以确保完全覆盖文字
+            # 向外扩展 padding，确保完全覆盖文字边缘
             x1 = max(0, x1 - expand)
             y1 = max(0, y1 - expand)
             x2 = min(w, x2 + expand)
@@ -69,7 +162,46 @@ class Inpainter:
 
         return mask
 
-    def _inpaint_opencv(self, image: np.ndarray, text_boxes: List[TextBox]) -> np.ndarray:
+    def _create_cluster_mask(
+        self,
+        image_shape: Tuple[int, int],
+        clusters: List[List[TextBox]],
+        expand: int = None
+    ) -> np.ndarray:
+        """
+        为聚类后的文字框创建合并的 mask
+
+        Args:
+            image_shape: 图像尺寸
+            clusters: 聚类后的文字框列表
+
+        Returns:
+            合并后的 mask
+        """
+        if expand is None:
+            expand = self.mask_expand
+
+        h, w = image_shape[:2]
+        mask = np.zeros((h, w), dtype=np.uint8)
+
+        for cluster in clusters:
+            # 计算聚类的边界框
+            x1 = min(b.bbox[0] for b in cluster)
+            y1 = min(b.bbox[1] for b in cluster)
+            x2 = max(b.bbox[2] for b in cluster)
+            y2 = max(b.bbox[3] for b in cluster)
+
+            # 扩展
+            x1 = max(0, x1 - expand)
+            y1 = max(0, y1 - expand)
+            x2 = min(w, x2 + expand)
+            y2 = min(h, y2 + expand)
+
+            mask[y1:y2, x1:x2] = 255
+
+        return mask
+
+    def _inpaint_opencv(self, image: np.ndarray, text_boxes: List[TextBox], clusters: List[List[TextBox]] = None) -> np.ndarray:
         """使用背景色填充 + 边缘inpaint修复文字区域"""
         if not text_boxes:
             return image.copy()
@@ -188,15 +320,61 @@ class Inpainter:
 
         return (bg_color, is_gradient)
 
-    def _inpaint_lama(self, image: np.ndarray, text_boxes: List[TextBox]) -> np.ndarray:
+    def _inpaint_qwen(self, image: np.ndarray, text_boxes: List[TextBox], clusters: List[List[TextBox]] = None) -> np.ndarray:
         """
-        使用LaMa模型进行修复（预留接口）
+        使用 Qwen-Image-Edit-2511 AI 模型进行修复
 
-        TODO: 实现LaMa模型集成
+        Args:
+            image: 原始图像 (BGR)
+            text_boxes: 文字框列表
+            clusters: 聚类后的文字框
+
+        Returns:
+            修复后的图像
         """
-        # 暂时回退到OpenCV
-        print("Warning: LaMa mode not implemented, falling back to OpenCV")
-        return self._inpaint_opencv(image, text_boxes)
+        import asyncio
+
+        # 延迟导入 Qwen 客户端
+        if self._qwen_client is None:
+            from .qwen_inpaint_client import QwenInpaintClient
+            qwen_api_url = getattr(config.inpaint, 'qwen_api_url', 'http://localhost:8765')
+            self._qwen_client = QwenInpaintClient(qwen_api_url)
+
+        h, w = image.shape[:2]
+        print(f"[Inpaint-Qwen] 图像尺寸: {w}x{h}, 使用 AI 模式")
+
+        # 使用聚类 mask（如果有聚类）或普通 mask
+        if clusters:
+            mask = self._create_cluster_mask(image.shape, clusters)
+        else:
+            mask = self._create_mask(image.shape, text_boxes)
+
+        # 调用 Qwen API
+        try:
+            result = asyncio.run(self._qwen_client.inpaint(image, mask))
+            print(f"[Inpaint-Qwen] AI 修复完成")
+            return result
+        except Exception as e:
+            print(f"[Inpaint-Qwen] AI 修复失败: {e}，回退到 OpenCV")
+            return self._inpaint_opencv(image, text_boxes, clusters)
+
+    def _image_to_base64(self, image: np.ndarray) -> str:
+        """将 OpenCV 图像转换为 base64"""
+        # BGR -> RGB
+        rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        pil_image = Image.fromarray(rgb_image)
+
+        buffer = io.BytesIO()
+        pil_image.save(buffer, format='PNG')
+        return base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+    def _mask_to_base64(self, mask: np.ndarray) -> str:
+        """将 mask 转换为 base64"""
+        pil_mask = Image.fromarray(mask)
+
+        buffer = io.BytesIO()
+        pil_mask.save(buffer, format='PNG')
+        return base64.b64encode(buffer.getvalue()).decode('utf-8')
 
     def inpaint_single(
         self,

@@ -21,11 +21,18 @@ from .text_renderer import TextRenderer
 class Pipeline:
     """图片翻译处理流水线"""
 
-    def __init__(self):
+    def __init__(self, inpaint_mode: str = "opencv"):
+        """
+        初始化流水线
+
+        Args:
+            inpaint_mode: inpaint 模式 - "opencv" 或 "qwen"
+        """
         self.ocr = OCRClient()
         self.translator = Translator()
         self.analyzer = TextAnalyzer()
-        self.inpainter = Inpainter()
+        self.inpainter = Inpainter(mode=inpaint_mode)
+        self.inpaint_mode = inpaint_mode
 
     async def process(self, task: TranslationTask) -> ProcessingResult:
         """

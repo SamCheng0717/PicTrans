@@ -3,7 +3,10 @@
     "allow": [
       "Bash(mkdir:*)",
       "Bash(rm:*)",
-      "Bash(python cli.py:*)"
+      "Bash(python cli.py:*)",
+      "WebSearch",
+      "WebFetch(domain:replicate.com)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }

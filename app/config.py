@@ -91,13 +91,18 @@ class FontConfig:
 @dataclass
 class InpaintConfig:
     """图像修复配置"""
-    mode: str = "opencv"  # opencv / lama
+    mode: str = "opencv"  # opencv / qwen
     # OpenCV inpaint 参数
     opencv_radius: int = 5
     opencv_method: str = "telea"  # telea / ns (Navier-Stokes)
     # 背景采样参数
     sample_padding: int = 10
     blur_kernel: int = 15
+    # Mask 扩展像素（防止字边残留）
+    mask_expand: int = 8
+    # Qwen-Image-Edit-2511 参数
+    qwen_api_url: str = "http://localhost:8765"  # 3090 服务器地址
+    qwen_prompt: str = "Remove all text and symbols in the masked area. Reconstruct the background naturally."
 
 
 @dataclass

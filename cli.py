@@ -47,10 +47,11 @@ async def process_images(
     skip_price: bool,
     skip_promo: bool,
     skip_brand: bool,
-    max_concurrent: int
+    max_concurrent: int,
+    inpaint_mode: str = "opencv"
 ):
     """处理图片列表"""
-    pipeline = Pipeline()
+    pipeline = Pipeline(inpaint_mode=inpaint_mode)
 
     # 创建任务列表
     tasks = [
@@ -67,6 +68,7 @@ async def process_images(
 
     print(f"\n开始处理 {len(tasks)} 张图片...")
     print(f"目标语言: {target_lang}")
+    print(f"Inpaint 模式: {inpaint_mode}")
     print(f"输出目录: {config.output_dir}")
     print("-" * 50)
 
@@ -102,7 +104,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  # 处理单张图片
+  # 处理单张图片（默认使用 OpenCV）
   python cli.py input.jpg -t ko
 
   # 处理整个文件夹
@@ -113,6 +115,9 @@ def main():
 
   # 多语言输出
   python cli.py input.jpg -t ko -t ja -t en
+
+  # 使用 AI inpaint（需要 GPU 服务器）
+  python cli.py input.jpg -t ko --inpaint qwen --qwen-url http://192.168.1.100:8765
         """
     )
 
@@ -185,6 +190,19 @@ def main():
         help="输出目录 (默认: ./output)"
     )
 
+    parser.add_argument(
+        "--inpaint",
+        choices=["opencv", "qwen"],
+        default="opencv",
+        help="Inpaint 模式: opencv(默认,快速) 或 qwen(AI,需要GPU服务器)"
+    )
+
+    parser.add_argument(
+        "--qwen-url",
+        default=None,
+        help="Qwen inpaint 服务器地址 (默认: http://localhost:8765)"
+    )
+
     args = parser.parse_args()
 
     # 处理语言参数
@@ -199,6 +217,13 @@ def main():
     if args.output_dir:
         config.output_dir = Path(args.output_dir)
         config.output_dir.mkdir(parents=True, exist_ok=True)
+
+    # 设置 Qwen API URL
+    if args.qwen_url:
+        config.inpaint.qwen_api_url = args.qwen_url
+
+    # Inpaint 模式
+    inpaint_mode = args.inpaint
 
     # 查找图片
     images = find_images(args.input)
@@ -224,7 +249,8 @@ def main():
             skip_price=skip_price,
             skip_promo=skip_promo,
             skip_brand=skip_brand,
-            max_concurrent=args.concurrent
+            max_concurrent=args.concurrent,
+            inpaint_mode=inpaint_mode
         ))
 
         total_success += success
