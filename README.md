@@ -8,6 +8,7 @@
 - [系统架构](#系统架构)
 - [快速开始](#快速开始)
 - [API 文档](#api-文档)
+- [CLI 模式使用指南](#cli-模式使用指南)
 - [配置说明](#配置说明)
 - [核心模块说明](#核心模块说明)
 - [文字过滤策略](#文字过滤策略)
@@ -124,11 +125,32 @@ python run.py
 
 ### 快速测试
 
+#### 方式 1：使用 API 服务
+
 ```bash
+# 启动服务
+python run.py
+
 # 基础翻译测试
 curl -X POST http://localhost:5000/api/translate \
   -F "image=@test.jpg" \
   -F "target_lang=ko"
+
+# 查看输出结果
+ls output/
+```
+
+#### 方式 2：使用 CLI 模式（推荐用于批量处理）
+
+```bash
+# 处理单张图片
+python cli.py input.jpg -t ko
+
+# 处理整个文件夹
+python cli.py ./images/ -t ko
+
+# 多语言翻译（同时输出韩语、日语、英语）
+python cli.py input.jpg -t ko -t ja -t en
 
 # 查看输出结果
 ls output/
@@ -304,6 +326,159 @@ response = requests.post(
 
 result = response.json()
 print(result['output_path'])
+```
+
+## 💻 CLI 模式使用指南
+
+CLI (命令行界面) 模式是批量处理图片翻译的推荐方式，无需启动 Web 服务，直接通过命令行处理图片。
+
+### 基本用法
+
+```bash
+python cli.py <输入路径> [选项]
+```
+
+### 参数说明
+
+| 参数 | 说明 | 示例 |
+|------|------|------|
+| `input` | 输入图片或目录路径（必需） | `input.jpg` 或 `./images/` |
+| `-t, --target-lang` | 目标语言代码（可多次指定） | `-t ko` 或 `-t ko -t ja` |
+| `-s, --source-lang` | 源语言代码（默认: zh） | `-s en` |
+| `-c, --concurrent` | 并发处理数（默认: 3） | `-c 5` |
+| `-o, --output-dir` | 输出目录（默认: ./output） | `-o ./results` |
+| `--inpaint` | 背景修复模式 | `--inpaint opencv` 或 `--inpaint qwen` |
+| `--qwen-url` | Qwen 服务器地址 | `--qwen-url http://localhost:8765` |
+
+### 文字过滤选项
+
+| 选项 | 默认值 | 说明 |
+|------|--------|------|
+| `--skip-price` | True | 跳过价格文字翻译 |
+| `--keep-price` | False | 保留价格文字翻译 |
+| `--skip-promo` | True | 跳过促销信息翻译 |
+| `--keep-promo` | False | 保留促销信息翻译 |
+| `--skip-brand` | False | 跳过品牌名翻译 |
+| `--keep-brand` | True | 保留品牌名翻译 |
+
+### 使用示例
+
+#### 示例 1：处理单张图片（最简单）
+
+```bash
+# 将图片翻译为韩语（默认跳过价格和促销）
+python cli.py product.jpg -t ko
+
+# 输出：
+# 找到 1 张图片
+# 开始处理 1 张图片...
+# 目标语言: ko
+# Inpaint 模式: opencv
+# --------------------------------------------------
+# ✓ [1/1] product.jpg
+#   输出: E:\PicTrans\output\product_ko_20250105_143022.jpg
+#   识别: 3 个文字, 翻译: 2, 跳过: 1
+#   耗时: 5200ms (OCR:3200ms, 翻译:1500ms, 渲染:500ms)
+# --------------------------------------------------
+# 处理完成: 成功 1, 失败 0
+```
+
+#### 示例 2：批量处理文件夹
+
+```bash
+# 处理整个 images 文件夹中的所有图片
+python cli.py ./images/ -t ko
+
+# 支持的图片格式：.jpg, .jpeg, .png, .webp, .gif
+```
+
+#### 示例 3：多语言翻译
+
+```bash
+# 同时翻译为韩语、日语、英语
+python cli.py product.jpg -t ko -t ja -t en
+
+# 输出 3 个文件：
+#   - product_ko_20250105_143022.jpg
+#   - product_ja_20250105_143025.jpg
+#   - product_en_20250105_143028.jpg
+```
+
+#### 示例 4：保留价格文字
+
+```bash
+# 翻译时保留价格（默认会跳过）
+python cli.py product.jpg -t ko --keep-price
+```
+
+#### 示例 5：翻译品牌名
+
+```bash
+# 默认保留品牌名，强制翻译品牌名
+python cli.py product.jpg -t ja --no-keep-brand
+```
+
+#### 示例 6：使用 AI 修复模式（适合复杂背景）
+
+```bash
+# 使用 Qwen AI 进行背景修复（需要部署 Qwen 服务）
+python cli.py product.jpg -t ko --inpaint qwen
+
+# 指定 Qwen 服务器地址
+python cli.py product.jpg -t ko --inpaint qwen --qwen-url http://192.168.1.100:8765
+```
+
+#### 示例 7：调整并发数（加速批量处理）
+
+```bash
+# 同时处理 5 张图片（默认 3 张）
+python cli.py ./images/ -t ko -c 5
+```
+
+#### 示例 8：自定义输出目录
+
+```bash
+# 指定输出目录
+python cli.py product.jpg -t ko -o ./translations
+```
+
+#### 示例 9：完整的批量处理示例
+
+```bash
+# 批量处理，翻译为韩语和日语，使用 5 个并发，保留价格
+python cli.py ./products/ \
+  -t ko -t ja \
+  -c 5 \
+  --keep-price \
+  --inpaint opencv \
+  -o ./results
+```
+
+### CLI vs API 模式对比
+
+| 特性 | CLI 模式 | API 模式 |
+|------|---------|---------|
+| **启动方式** | 直接运行命令 | 需要先启动 `python run.py` |
+| **适用场景** | 批量处理、自动化 | 实时处理、集成到其他系统 |
+| **性能** | 更快（无网络开销） | 较慢（HTTP 请求开销） |
+| **并发控制** | 内置批量处理 | 需要客户端实现 |
+| **使用复杂度** | 简单（单行命令） | 较复杂（需要构造请求） |
+| **返回结果** | 终端输出 | JSON 格式响应 |
+
+### CLI 模式输出说明
+
+**成功输出示例**：
+```
+✓ [1/10] product.jpg
+  输出: E:\PicTrans\output\product_ko_20250105_143022.jpg
+  识别: 4 个文字, 翻译: 4, 跳过: 0
+  耗时: 5200ms (OCR:3200ms, 翻译:1500ms, 渲染:500ms)
+```
+
+**失败输出示例**：
+```
+✗ [2/10] corrupted.jpg
+  错误: Failed to decode image
 ```
 
 ## ⚙️ 配置说明

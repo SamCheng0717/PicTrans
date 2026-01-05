@@ -18,12 +18,29 @@ PicTrans is an AI-powered image translation system specialized for e-commerce pr
 
 ### Running the Application
 
+**Option 1: API Server Mode**
+
 ```bash
 # Start the development server
 python run.py
 ```
 
 The server runs on `http://localhost:5000` with debug mode enabled.
+
+**Option 2: CLI Mode (Recommended for Batch Processing)**
+
+```bash
+# Process single image
+python cli.py input.jpg -t ko
+
+# Process directory
+python cli.py ./images/ -t ko
+
+# Multi-language output
+python cli.py input.jpg -t ko -t ja -t en
+```
+
+CLI mode is faster and more efficient for batch processing as it bypasses HTTP overhead.
 
 ### Testing the API
 
@@ -38,6 +55,31 @@ curl http://localhost:5000/api/health
 
 # Get supported languages
 curl http://localhost:5000/api/languages
+```
+
+### CLI Mode Usage
+
+```bash
+# Basic usage
+python cli.py <input_path> [options]
+
+# Common options
+  -t, --target-lang    Target language (can specify multiple)
+  -s, --source-lang    Source language (default: zh)
+  -c, --concurrent     Concurrent processing count (default: 3)
+  -o, --output-dir     Output directory (default: ./output)
+  --inpaint            Inpaint mode: opencv or qwen (default: opencv)
+  --skip-price         Skip price text (default: True)
+  --keep-price         Translate price text
+  --skip-promo         Skip promo text (default: True)
+  --keep-promo         Translate promo text
+  --skip-brand         Skip brand text (default: False)
+  --keep-brand         Translate brand text (default: True)
+
+# Examples
+python cli.py product.jpg -t ko
+python cli.py ./images/ -t ko -t ja -c 5
+python cli.py product.jpg -t ko --keep-price --inpaint qwen
 ```
 
 ### OCR Visualization Test
@@ -97,6 +139,12 @@ class TextBox:
 **app/api/** - Web API layer:
 - `routes.py` - Flask Blueprint with `/api/translate` endpoint
 - Handles both multipart file upload and base64 JSON input
+
+**cli.py** - Command-line interface:
+- Direct execution without Flask server overhead
+- Batch processing with concurrency control
+- Multi-language output support
+- Uses the same pipeline as API mode
 
 **app/models/schemas.py** - Data models:
 - `TextRole` enum, `TextBox`, `TextFeatures`, `TranslationTask`, `ProcessingResult`
@@ -247,3 +295,136 @@ Edit `_build_prompt()` in `app/core/translator.py`. The current prompt is optimi
 2. Add mode parameter to `__init__()` method
 3. Update `inpaint()` method to route to new mode
 4. Update `InpaintConfig` in `app/config.py`
+
+### Adding CLI Options
+
+1. Add argument in `cli.py::main()` using `argparse`
+2. Pass argument to `TranslationTask` or config
+3. Update `process_images()` function if needed
+4. Add help text and examples
+
+Example:
+```python
+# In cli.py
+parser.add_argument(
+    "--new-option",
+    action="store_true",
+    help="Description of new option"
+)
+
+# Pass to task
+task = TranslationTask(
+    ...,
+    new_option=args.new_option
+)
+```
+
+## CLI Mode Architecture
+
+### Execution Flow
+
+```
+cli.py::main()
+  ↓
+find_images() - Discover image files
+  ↓
+For each target_lang:
+  ↓
+  process_images() - Async batch processing
+    ↓
+    Pipeline.process_batch() - Concurrent processing
+      ↓
+      For each task:
+        Pipeline.process() - Single image processing
+          ↓
+          [8-step pipeline as described above]
+```
+
+### Key Components
+
+**find_images(input_path)**:
+- Accepts file or directory path
+- Supports: .jpg, .jpeg, .png, .webp, .gif
+- Returns sorted list of Path objects
+
+**process_images(images, target_lang, ...)**:
+- Creates `TranslationTask` objects for each image
+- Calls `Pipeline.process_batch()` with concurrency control
+- Prints real-time progress and statistics
+- Returns success/fail counts
+
+**argparse Configuration**:
+- `input` (positional): Image or directory path
+- `-t, --target-lang`: Can be specified multiple times for multi-language output
+- `-s, --source-lang`: Default "zh"
+- `-c, --concurrent`: Default 3, controls parallel processing
+- `-o, --output-dir`: Overrides default output directory
+- `--inpaint`: Mode selection (opencv/qwen)
+- `--qwen-url`: Qwen server URL for AI inpainting
+- Filter flags: `--skip-price`, `--keep-price`, `--skip-promo`, `--keep-promo`, `--skip-brand`, `--keep-brand`
+
+### Concurrency Model
+
+CLI mode uses `asyncio.gather()` for concurrent processing:
+
+```python
+# In pipeline.py::process_batch()
+semaphore = asyncio.Semaphore(max_concurrent)
+tasks = [process_with_semaphore(task, semaphore) for task in tasks]
+results = await asyncio.gather(*tasks)
+```
+
+Benefits:
+- API calls are parallelized (OCR + translation)
+- Limits concurrent requests to avoid rate limiting
+- Maintains order of input files
+
+### Multi-Language Output
+
+When multiple `-t` flags are provided:
+
+```bash
+python cli.py product.jpg -t ko -t ja -t en
+```
+
+Execution:
+1. Process all images for first language (ko)
+2. Process all images for second language (ja)
+3. Process all images for third language (en)
+4. Output separate files for each language
+
+Output naming:
+```
+product_ko_20250105_143022.jpg
+product_ja_20250105_143025.jpg
+product_en_20250105_143028.jpg
+```
+
+### Output Format
+
+**Success**:
+```
+✓ [1/10] product.jpg
+  输出: E:\PicTrans\output\product_ko_20250105_143022.jpg
+  识别: 4 个文字, 翻译: 4, 跳过: 0
+  耗时: 5200ms (OCR:3200ms, 翻译:1500ms, 渲染:500ms)
+```
+
+**Failure**:
+```
+✗ [2/10] corrupted.jpg
+  错误: Failed to decode image
+```
+
+**Summary**:
+```
+处理完成: 成功 9, 失败 1
+```
+
+### Advantages Over API Mode
+
+1. **No HTTP overhead** - Direct function calls
+2. **Built-in batching** - Process entire directories at once
+3. **Multi-language support** - Specify multiple target languages in single command
+4. **Progress tracking** - Real-time terminal output
+5. **Simpler integration** - Easy to use in shell scripts and automation
