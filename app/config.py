@@ -19,6 +19,11 @@ class OCRConfig:
     max_tokens: int = 2048
     temperature: float = 0
     timeout: int = 60
+    # 边界框动态扩展配置（解决部分笔画未被框选的问题）
+    bbox_refine_enabled: bool = True  # 是否启用边界框精炼
+    bbox_expand_ratio: float = 0.15  # 扩展比例（相对于文字框高度）
+    bbox_expand_min: int = 5  # 最小扩展像素数
+    bbox_expand_max: int = 20  # 最大扩展像素数
 
 
 @dataclass

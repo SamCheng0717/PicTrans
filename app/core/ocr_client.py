@@ -109,6 +109,9 @@ class OCRClient:
 
             bbox = [x1, y1, x2, y2]
 
+            # 动态扩展边界框，确保完整覆盖文字笔画
+            bbox = self._refine_bbox(bbox, img_w, img_h)
+
             # 自动分类角色
             role = self._classify_role(text)
 
@@ -127,6 +130,41 @@ class OCRClient:
         """根据文字内容分类角色（全量翻译，不过滤）"""
         # 全部标记为FEATURE，不跳过任何文字
         return TextRole.FEATURE
+
+    def _refine_bbox(self, bbox: List[int], img_w: int, img_h: int) -> List[int]:
+        """
+        动态扩展边界框，确保完整覆盖文字笔画
+
+        Args:
+            bbox: 原始边界框 [x1, y1, x2, y2]
+            img_w: 图像宽度
+            img_h: 图像高度
+
+        Returns:
+            扩展后的边界框 [x1, y1, x2, y2]
+        """
+        if not config.ocr.bbox_refine_enabled:
+            return bbox
+
+        x1, y1, x2, y2 = bbox
+        box_h = y2 - y1
+        box_w = x2 - x1
+
+        # 动态计算扩展像素：基于高度的比例，但限制在最小和最大值之间
+        expand = int(box_h * config.ocr.bbox_expand_ratio)
+        expand = max(config.ocr.bbox_expand_min, min(expand, config.ocr.bbox_expand_max))
+
+        # 扩展边界框
+        new_x1 = max(0, x1 - expand)
+        new_y1 = max(0, y1 - expand)
+        new_x2 = min(img_w, x2 + expand)
+        new_y2 = min(img_h, y2 + expand)
+
+        # 如果有实际扩展，输出日志
+        if new_x1 != x1 or new_y1 != y1 or new_x2 != x2 or new_y2 != y2:
+            print(f"[OCR-BBoxRefine] 扩展 {expand}px: [{x1},{y1},{x2},{y2}] -> [{new_x1},{new_y1},{new_x2},{new_y2}]")
+
+        return [new_x1, new_y1, new_x2, new_y2]
 
     async def recognize(self, image: Union[str, Path, bytes]) -> List[TextBox]:
         """

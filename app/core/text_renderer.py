@@ -1,5 +1,5 @@
 """
-文字渲染器 - 自适应排版 + 描边阴影
+文字渲染器 - 自适应排版，纯文字渲染
 """
 import cv2
 import numpy as np
@@ -157,12 +157,24 @@ class TextRenderer:
 
         font = self._get_font(font_weight, font_size)
 
+        # 获取文字颜色
+        text_color = features.text_color
+        bg_color = features.background_color
+
+        # 检查文字和背景颜色对比度，如果太接近则自动调整
+        if bg_color:
+            color_diff = abs(text_color[0] - bg_color[0]) + abs(text_color[1] - bg_color[1]) + abs(text_color[2] - bg_color[2])
+            if color_diff < 100:  # 颜色太接近
+                # 根据背景亮度选择对比色
+                bg_brightness = sum(bg_color) / 3
+                if bg_brightness > 127:
+                    text_color = (0, 0, 0)  # 浅背景用黑字
+                else:
+                    text_color = (255, 255, 255)  # 深背景用白字
+                print(f"[Render] 颜色对比度不足，自动调整: RGB{features.text_color} -> RGB{text_color}")
+
         # 调试输出
-        font_path = self.font_config.get_font_path(font_weight, self.target_lang)
-        print(f"[Render] 渲染文字: '{box.translated_text}'")
-        print(f"[Render] 目标语言: {self.target_lang}, 字体: {font_path}")
-        print(f"[Render] 字号: {font_size}, 位置: [{x1},{y1},{x2},{y2}]")
-        print(f"[Render] 文字颜色: RGB{features.text_color}, 描边: {features.has_stroke}, 描边色: {features.stroke_color}")
+        print(f"[Render] '{box.translated_text}' @ [{x1},{y1},{x2},{y2}] 字号:{font_size} 颜色:RGB{text_color}")
 
         # 计算文字位置（居中）
         lines = text.split("\n")
@@ -186,58 +198,12 @@ class TextRenderer:
 
             # 水平居中
             x = x1 + (box_width - line_w) / 2
-            # 修正y位置：减去y_offset来补偿字体的ascender偏移
             y = current_y - y_offset
 
-            # 渲染阴影
-            if features.has_shadow and features.shadow_color:
-                shadow_offset = features.shadow_offset or self.render_config.shadow_offset
-                shadow_color = features.shadow_color
-                self._draw_text_with_effects(
-                    draw, line, (x + shadow_offset[0], y + shadow_offset[1]),
-                    font, shadow_color, None, 0
-                )
-
-            # 渲染描边
-            stroke_width = 0
-            stroke_color = None
-            if features.has_stroke and features.stroke_color:
-                stroke_width = features.stroke_width or int(font_size * self.render_config.stroke_width_ratio)
-                stroke_color = features.stroke_color
-
-            # 渲染主文字
-            self._draw_text_with_effects(
-                draw, line, (x, y),
-                font, features.text_color, stroke_color, stroke_width
-            )
+            # 渲染纯文字（无特效）
+            draw.text((x, y), line, font=font, fill=text_color)
 
             current_y += line_h * self.render_config.line_spacing
-
-    def _draw_text_with_effects(
-        self,
-        draw: ImageDraw.ImageDraw,
-        text: str,
-        position: Tuple[float, float],
-        font: ImageFont.FreeTypeFont,
-        fill_color: Tuple[int, int, int],
-        stroke_color: Optional[Tuple[int, int, int]] = None,
-        stroke_width: int = 0
-    ):
-        """绘制带效果的文字"""
-        x, y = position
-
-        if stroke_width > 0 and stroke_color:
-            # PIL原生描边
-            draw.text(
-                (x, y),
-                text,
-                font=font,
-                fill=fill_color,
-                stroke_width=stroke_width,
-                stroke_fill=stroke_color
-            )
-        else:
-            draw.text((x, y), text, font=font, fill=fill_color)
 
     def render_single(
         self,

@@ -40,9 +40,11 @@ class TextAnalyzer:
         if roi.size == 0:
             return TextFeatures()
 
-        # 分析各项特征
-        text_color = self._detect_text_color(roi)
+        # 先检测背景色
         bg_color, is_gradient = self._detect_background(image, text_box.bbox)
+
+        # 再检测文字颜色（传入背景色用于对比）
+        text_color = self._detect_text_color(roi, bg_color)
         has_stroke, stroke_color, stroke_width = self._detect_stroke(roi, text_color)
         has_shadow, shadow_color, shadow_offset = self._detect_shadow(roi, text_color)
         font_size = self._estimate_font_size(text_box)
@@ -62,48 +64,75 @@ class TextAnalyzer:
             background_is_gradient=is_gradient
         )
 
-    def _detect_text_color(self, roi: np.ndarray) -> Tuple[int, int, int]:
-        """检测文字主色调 - 基于颜色聚类"""
+    def _detect_text_color(self, roi: np.ndarray, bg_color: Tuple[int, int, int] = None) -> Tuple[int, int, int]:
+        """
+        检测文字主色调 - 找与背景对比度最大的颜色
+
+        Args:
+            roi: 文字区域图像 (BGR)
+            bg_color: 背景色 (RGB)，用于对比
+        """
         if roi.size == 0:
-            return (0, 0, 0)  # 默认黑色
+            return (0, 0, 0)
 
         # 转换到灰度图进行二值化
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
 
-        # 使用OTSU自动阈值分离前景和背景
+        # 使用OTSU自动阈值分离
         thresh_val, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-        # 计算两个区域的平均亮度
+        # 分离亮区域和暗区域
         light_mask = binary > 127
         dark_mask = binary <= 127
 
         light_count = np.sum(light_mask)
         dark_count = np.sum(dark_mask)
 
-        # 文字通常占据较小的区域，背景占据较大区域
-        # 所以较小区域的颜色更可能是文字颜色
-        if light_count > 0 and dark_count > 0:
-            # 哪个区域更小，哪个更可能是文字
-            if dark_count < light_count:
-                # 深色区域较小 -> 深色文字在浅色背景上
-                text_mask = dark_mask
+        # 提取两个区域的颜色
+        light_color = None
+        dark_color = None
+
+        if light_count > 10:
+            colors = roi[light_mask]
+            light_color = (
+                int(np.median(colors[:, 2])),  # R
+                int(np.median(colors[:, 1])),  # G
+                int(np.median(colors[:, 0]))   # B
+            )
+
+        if dark_count > 10:
+            colors = roi[dark_mask]
+            dark_color = (
+                int(np.median(colors[:, 2])),  # R
+                int(np.median(colors[:, 1])),  # G
+                int(np.median(colors[:, 0]))   # B
+            )
+
+        # 如果有背景色，选择与背景对比度更大的颜色
+        if bg_color and light_color and dark_color:
+            # 计算与背景的颜色差
+            light_diff = abs(light_color[0] - bg_color[0]) + abs(light_color[1] - bg_color[1]) + abs(light_color[2] - bg_color[2])
+            dark_diff = abs(dark_color[0] - bg_color[0]) + abs(dark_color[1] - bg_color[1]) + abs(dark_color[2] - bg_color[2])
+
+            # 选对比度更大的作为文字色
+            if dark_diff > light_diff:
+                return dark_color
             else:
-                # 浅色区域较小 -> 浅色文字在深色背景上
-                text_mask = light_mask
-        elif dark_count > 0:
-            text_mask = dark_mask
-        else:
-            text_mask = light_mask
+                return light_color
 
-        # 提取文字区域的颜色
-        if np.sum(text_mask) > 10:
-            colors = roi[text_mask]
-            b = int(np.median(colors[:, 0]))
-            g = int(np.median(colors[:, 1]))
-            r = int(np.median(colors[:, 2]))
-            return (r, g, b)
+        # 没有背景色时，使用面积判断（较小区域更可能是文字）
+        if light_count > 0 and dark_count > 0:
+            if dark_count < light_count:
+                return dark_color if dark_color else (0, 0, 0)
+            else:
+                return light_color if light_color else (255, 255, 255)
 
-        # 默认返回黑色（大多数文字是深色的）
+        # 默认返回检测到的颜色
+        if dark_color:
+            return dark_color
+        if light_color:
+            return light_color
+
         return (0, 0, 0)
 
     def _detect_background(
