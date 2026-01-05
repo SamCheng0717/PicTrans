@@ -12,6 +12,38 @@ from ..config import config
 from ..models.schemas import TextBox, TextRole
 
 
+def is_english_text(text: str) -> bool:
+    """
+    检测文字是否为英文
+
+    判断标准：
+    1. 只包含 ASCII 字符（字母、数字、空格、常用标点）
+    2. 至少包含一个英文字母
+
+    Args:
+        text: 待检测的文字
+
+    Returns:
+        True if the text is English, False otherwise
+    """
+    if not text:
+        return False
+
+    # 移除空格后检查
+    text_clean = text.strip().replace(" ", "").replace("\n", "")
+
+    if not text_clean:
+        return False
+
+    # 检查是否只包含 ASCII 字符（英文、数字、常用标点）
+    is_ascii = all(ord(char) < 128 for char in text_clean)
+
+    # 至少包含一个英文字母
+    has_english = any(char.isalpha() and char.isascii() for char in text_clean)
+
+    return is_ascii and has_english
+
+
 # DeepSeek-OCR 返回归一化坐标的范围 (0-999)
 OCR_NORMALIZED_SIZE = 999
 
@@ -115,12 +147,16 @@ class OCRClient:
             # 自动分类角色
             role = self._classify_role(text)
 
+            # 检测是否为英文
+            is_eng = is_english_text(text)
+
             text_box = TextBox(
                 id=f"t_{idx:03d}",
                 text=text,
                 bbox=bbox,
                 role=role,
-                skip=False  # 全量翻译，不跳过
+                skip=False,  # 全量翻译，不跳过
+                is_english=is_eng
             )
             text_boxes.append(text_box)
 

@@ -210,11 +210,20 @@ class Inpainter:
         result = image.copy()
         print(f"[Inpaint] 图像尺寸: {w}x{h}, 待处理文字框: {len(text_boxes)}")
 
-        # 第一步：用背景色填充每个文字区域
+        # 分别处理渐变和非渐变背景
+        gradient_boxes = []
+        solid_boxes = []
+
         for box in text_boxes:
             if box.skip:
                 continue
+            if box.features and box.features.background_is_gradient:
+                gradient_boxes.append(box)
+            else:
+                solid_boxes.append(box)
 
+        # 第一步：处理纯色背景的文字框（直接填充）
+        for box in solid_boxes:
             x1, y1, x2, y2 = box.bbox
 
             # 确保坐标在图像范围内
@@ -228,20 +237,48 @@ class Inpainter:
                 continue
 
             # 采样背景色
-            bg_color, is_gradient = self._sample_background(image, (x1, y1, x2, y2))
+            bg_color, _ = self._sample_background(image, (x1, y1, x2, y2))
             print(f"[Inpaint] 填充 '{box.text}' @ [{x1},{y1},{x2},{y2}] -> RGB{bg_color}")
 
             # 用背景色填充
             result[y1:y2, x1:x2] = (bg_color[2], bg_color[1], bg_color[0])  # RGB -> BGR
 
-        # 第二步：创建边缘mask，用inpaint处理边缘过渡
+        # 第二步：处理渐变背景的文字框（使用inpaint保留渐变）
+        if gradient_boxes:
+            print(f"[Inpaint] 检测到 {len(gradient_boxes)} 个渐变背景文字框，使用智能修复")
+
+            # 为渐变背景文字框创建mask
+            gradient_mask = np.zeros((h, w), dtype=np.uint8)
+
+            for box in gradient_boxes:
+                x1, y1, x2, y2 = box.bbox
+                x1 = max(0, x1)
+                y1 = max(0, y1)
+                x2 = min(w, x2)
+                y2 = min(h, y2)
+
+                if x2 <= x1 or y2 <= y1:
+                    continue
+
+                print(f"[Inpaint] 渐变背景 '{box.text}' @ [{x1},{y1},{x2},{y2}]")
+
+                # 扩展mask范围，确保覆盖文字边缘
+                expand = 3
+                gradient_mask[max(0, y1-expand):min(h, y2+expand),
+                            max(0, x1-expand):min(w, x2+expand)] = 255
+
+            # 使用inpaint修复渐变背景的文字区域
+            if np.any(gradient_mask):
+                method = cv2.INPAINT_TELEA if self.opencv_method == "telea" else cv2.INPAINT_NS
+                result = cv2.inpaint(result, gradient_mask, 3, method)
+                print(f"[Inpaint] 渐变背景修复完成")
+
+        # 第三步：创建边缘mask，用inpaint处理边缘过渡
+        # 只对非渐变背景的文字框处理边缘
         edge_mask = np.zeros((h, w), dtype=np.uint8)
         edge_width = 8  # 边缘宽度
 
-        for box in text_boxes:
-            if box.skip:
-                continue
-
+        for box in solid_boxes:
             x1, y1, x2, y2 = box.bbox
             x1 = max(0, x1)
             y1 = max(0, y1)
@@ -266,7 +303,7 @@ class Inpainter:
             method = cv2.INPAINT_TELEA if self.opencv_method == "telea" else cv2.INPAINT_NS
             result = cv2.inpaint(result, edge_mask, 5, method)
 
-        print(f"[Inpaint] 完成修复（背景色填充 + 边缘平滑）")
+        print(f"[Inpaint] 完成修复（背景色填充 + 渐变保留 + 边缘平滑）")
         return result
 
     def _sample_background(

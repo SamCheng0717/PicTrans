@@ -4,7 +4,7 @@
 import os
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, List
 
 
 # 项目根目录
@@ -32,7 +32,7 @@ class TranslatorConfig:
     api_url: str = "https://api.deepseek.com/v1/chat/completions"
     api_key: str = "sk-9ff002aa634b490687c71b2b431d9d13"
     model: str = "deepseek-chat"
-    max_tokens: int = 1024
+    max_tokens: int = 2048
     temperature: float = 0.3
     timeout: int = 30
 
@@ -106,7 +106,7 @@ class InpaintConfig:
     # Mask 扩展像素（防止字边残留）
     mask_expand: int = 8
     # Qwen-Image-Edit-2511 参数
-    qwen_api_url: str = "http://localhost:8765"  # 3090 服务器地址
+    qwen_api_url: str = "http://192.168.103.43:8765"  # Qwen 3090 服务器地址
     qwen_prompt: str = "Remove all text and symbols in the masked area. Reconstruct the background naturally."
 
 
@@ -129,6 +129,41 @@ class RenderConfig:
 
 
 @dataclass
+class ColorDetectionConfig:
+    """颜色检测配置"""
+    # 背景采样参数
+    bg_sample_padding: int = 30  # 增加到30px
+    bg_sample_multi_ring: bool = True  # 多环采样
+    bg_sample_rings: List[int] = field(default_factory=lambda: [5, 15, 30, 50])
+    bg_gradient_threshold: float = 25.0  # 渐变检测阈值（color std）
+
+    # OTSU 增强
+    use_hsv_preprocessing: bool = True  # 使用HSV预处理
+    use_adaptive_threshold: bool = True  # 使用自适应阈值
+    adaptive_window_size: int = 11  # 自适应阈值窗口大小
+
+    # 边缘检测辅助
+    use_edge_detection: bool = True  # 使用边缘检测辅助
+    canny_low: int = 50  # Canny边缘检测低阈值
+    canny_high: int = 150  # Canny边缘检测高阈值
+    edge_dilate_iterations: int = 2  # 边缘膨胀迭代次数
+
+    # K-means 聚类
+    use_kmeans_fallback: bool = True  # 使用K-means作为兜底策略
+    kmeans_clusters: int = 3  # K-means聚类数量
+    kmeans_max_iter: int = 20  # K-means最大迭代次数
+
+    # 对比度判断
+    contrast_threshold: int = 70  # 对比度阈值（从100降低到70）
+    use_perceptual_distance: bool = True  # 使用感知色差
+    min_brightness_diff: int = 30  # 最小亮度差
+
+    # 调试模式
+    debug_mode: bool = True  # 启用调试模式（详细日志）
+    save_intermediate: bool = False  # 保存中间结果图片
+
+
+@dataclass
 class AppConfig:
     """应用总配置"""
     ocr: OCRConfig = field(default_factory=OCRConfig)
@@ -136,6 +171,7 @@ class AppConfig:
     font: FontConfig = field(default_factory=FontConfig)
     inpaint: InpaintConfig = field(default_factory=InpaintConfig)
     render: RenderConfig = field(default_factory=RenderConfig)
+    color_detection: ColorDetectionConfig = field(default_factory=ColorDetectionConfig)  # 新增颜色检测配置
 
     # 输出目录
     output_dir: Path = field(default_factory=lambda: BASE_DIR / "output")

@@ -80,6 +80,7 @@ def translate_image():
             skip_price = request.form.get("skip_price", "true").lower() == "true"
             skip_promo = request.form.get("skip_promo", "true").lower() == "true"
             skip_brand = request.form.get("skip_brand", "false").lower() == "true"
+            skip_english = request.form.get("skip_english", "false").lower() == "true"
             skip_texts = request.form.get("skip_texts", "").split(",")
             skip_texts = [t.strip() for t in skip_texts if t.strip()]
 
@@ -125,6 +126,7 @@ def translate_image():
             skip_price = data.get("skip_price", True)
             skip_promo = data.get("skip_promo", True)
             skip_brand = data.get("skip_brand", False)
+            skip_english = data.get("skip_english", False)
             skip_texts = data.get("skip_texts", [])
 
         # 创建任务
@@ -136,6 +138,7 @@ def translate_image():
             skip_price=skip_price,
             skip_promo=skip_promo,
             skip_brand=skip_brand,
+            skip_english=skip_english,
             skip_texts=skip_texts
         )
 

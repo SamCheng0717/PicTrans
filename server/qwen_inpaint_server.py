@@ -17,6 +17,7 @@ Qwen-Image-Edit-2511 Inpaint 服务器
        "prompt": "Remove all text..."
    }
 """
+
 import os
 import io
 import base64
@@ -32,28 +33,35 @@ import uvicorn
 # 全局变量
 pipeline = None
 device = None
-gpu_id = 0  # 默认使用 GPU 0
-model_path = "Qwen/Qwen-Image-Edit-2511"  # 模型路径
+gpu_id = 2  # 默认使用 GPU 0
+model_path = "/data/models/Qwen/Qwen-Image-Edit"  # 模型路径
 
 
 class InpaintRequest(BaseModel):
     """Inpaint 请求"""
+
     image: str  # base64 编码的原图
-    mask: str   # base64 编码的 mask
-    prompt: Optional[str] = "Remove all text and symbols in the masked area. Reconstruct the background naturally."
+    mask: str  # base64 编码的 mask
+    prompt: Optional[str] = (
+        "Remove all text and symbols in the masked area. Reconstruct the background naturally."
+    )
 
 
 class InpaintResponse(BaseModel):
     """Inpaint 响应"""
+
     success: bool
     output: Optional[str] = None  # base64 编码的结果图
     error: Optional[str] = None
 
 
-def load_model():
+def load_model(model_path_arg=None):
     """加载 Qwen-Image-Edit-2511 模型"""
-    global pipeline, device, gpu_id
+    global pipeline, device
     import torch
+
+    # 使用传入的路径或全局路径
+    path_to_use = model_path_arg if model_path_arg else model_path
 
     print("正在加载 Qwen-Image-Edit-2511 模型...")
     print(f"CUDA 可用: {torch.cuda.is_available()}")
@@ -66,7 +74,9 @@ def load_model():
         # 使用 cuda:0（因为 CUDA_VISIBLE_DEVICES 已经选择了指定的 GPU）
         device = "cuda:0"
         print(f"使用 GPU: {torch.cuda.get_device_name(0)}")
-        print(f"显存: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+        print(
+            f"显存: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB"
+        )
     else:
         device = "cpu"
         print("警告: 未检测到 GPU，将使用 CPU（会很慢）")
@@ -74,14 +84,20 @@ def load_model():
     try:
         from diffusers import QwenImageEditPipeline
 
-        # 使用 4-bit 量化减少显存占用
-        print(f"从 {model_path} 加载模型...")
+        # 加载模型，强制使用本地文件
+        print(f"从 {path_to_use} 加载模型...")
+
+        # 使用 float16 代替 bfloat16 可以节省显存
         pipeline = QwenImageEditPipeline.from_pretrained(
-            model_path,
-            torch_dtype=torch.bfloat16,
-            load_in_4bit=True,  # 4-bit 量化，显存占用约 10-12GB
+            path_to_use,
+            torch_dtype=torch.float16,  # 使用 float16 节省显存
+            local_files_only=True,  # 强制只使用本地文件
         )
-        pipeline.to(device)
+
+        # 使用 enable_model_cpu_offload 来节省显存
+        # 模型会在需要时移到 GPU，不需要时移到 CPU
+        print("启用 CPU offloading 以节省显存...")
+        pipeline.enable_model_cpu_offload()
 
         print(f"模型加载完成！运行在 {device}")
         return True
@@ -93,6 +109,7 @@ def load_model():
     except Exception as e:
         print(f"模型加载失败: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -113,7 +130,7 @@ def pil_to_base64(image: Image.Image) -> str:
 # FastAPI 应用
 app = FastAPI(
     title="Qwen-Image-Edit-2511 Inpaint Server",
-    description="AI 图像修复服务，用于擦除文字并重建背景"
+    description="AI 图像修复服务，用于擦除文字并重建背景",
 )
 
 # CORS 配置
@@ -129,11 +146,7 @@ app.add_middleware(
 @app.get("/health")
 async def health_check():
     """健康检查"""
-    return {
-        "status": "ok",
-        "model_loaded": pipeline is not None,
-        "device": device
-    }
+    return {"status": "ok", "model_loaded": pipeline is not None, "device": device}
 
 
 @app.post("/inpaint", response_model=InpaintResponse)
@@ -145,6 +158,8 @@ async def inpaint(request: InpaintRequest):
         raise HTTPException(status_code=503, detail="模型未加载")
 
     try:
+        import torch
+
         # 解码图像
         image = base64_to_pil(request.image)
         mask = base64_to_pil(request.mask).convert("L")
@@ -169,26 +184,22 @@ async def inpaint(request: InpaintRequest):
 
         print(f"[Inpaint] 完成！")
 
-        return InpaintResponse(
-            success=True,
-            output=output_base64
-        )
+        return InpaintResponse(success=True, output=output_base64)
 
     except Exception as e:
         print(f"[Inpaint] 错误: {e}")
         import traceback
+
         traceback.print_exc()
 
-        return InpaintResponse(
-            success=False,
-            error=str(e)
-        )
+        return InpaintResponse(success=False, error=str(e))
 
 
 @app.on_event("startup")
 async def startup_event():
     """服务启动时加载模型"""
-    if not load_model():
+    global model_path
+    if not load_model(model_path):
         print("警告: 模型加载失败，服务可能无法正常工作")
 
 
@@ -199,8 +210,11 @@ def main():
     parser.add_argument("--host", default="0.0.0.0", help="监听地址")
     parser.add_argument("--port", type=int, default=8765, help="监听端口")
     parser.add_argument("--gpu", type=int, default=0, help="使用的 GPU 编号 (默认: 0)")
-    parser.add_argument("--model", default="Qwen/Qwen-Image-Edit-2511",
-                       help="模型路径，可以是 HF 模型名或本地路径")
+    parser.add_argument(
+        "--model",
+        default="Qwen/Qwen-Image-Edit-2511",
+        help="模型路径，可以是 HF 模型名或本地路径",
+    )
     parser.add_argument("--reload", action="store_true", help="开发模式，自动重载")
 
     args = parser.parse_args()
@@ -219,10 +233,7 @@ def main():
     print(f"使用 GPU: {args.gpu}")
 
     uvicorn.run(
-        "qwen_inpaint_server:app",
-        host=args.host,
-        port=args.port,
-        reload=args.reload
+        "qwen_inpaint_server:app", host=args.host, port=args.port, reload=args.reload
     )
 
 

@@ -59,6 +59,7 @@ class TextBox:
 
     # 处理标记
     skip: bool = False  # 是否跳过处理
+    is_english: bool = False  # 是否为英文文字
 
     @property
     def width(self) -> int:
@@ -92,6 +93,7 @@ class TranslationTask:
     skip_price: bool = True
     skip_promo: bool = True
     skip_brand: bool = False
+    skip_english: bool = False  # 跳过英文文字翻译
 
     # 自定义跳过的文字
     skip_texts: List[str] = field(default_factory=list)
@@ -146,6 +148,7 @@ class APIRequest:
     skip_price: bool = True
     skip_promo: bool = True
     skip_brand: bool = False
+    skip_english: bool = False  # 跳过英文文字翻译
     skip_texts: List[str] = field(default_factory=list)
 
 

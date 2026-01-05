@@ -31,6 +31,33 @@ class TextRenderer:
             self._font_cache[cache_key] = ImageFont.truetype(str(font_path), size)
         return self._font_cache[cache_key]
 
+    @staticmethod
+    def _perceptual_color_distance(c1: Tuple[int, int, int], c2: Tuple[int, int, int]) -> float:
+        """
+        计算感知色差（简化版CIEDE2000，使用RGB欧几里得距离）
+
+        Args:
+            c1: 颜色1 (R, G, B)
+            c2: 颜色2 (R, G, B)
+
+        Returns:
+            色差值（越大差异越大）
+        """
+        return np.sqrt(sum((a - b) ** 2 for a, b in zip(c1, c2)))
+
+    @staticmethod
+    def _calculate_brightness(color: Tuple[int, int, int]) -> float:
+        """
+        计算感知亮度（使用ITU-R BT.709公式）
+
+        Args:
+            color: RGB颜色元组
+
+        Returns:
+            亮度值（0-255）
+        """
+        return 0.2126 * color[0] + 0.7152 * color[1] + 0.0722 * color[2]
+
     def _calculate_text_size(
         self,
         text: str,
@@ -163,15 +190,24 @@ class TextRenderer:
 
         # 检查文字和背景颜色对比度，如果太接近则自动调整
         if bg_color:
-            color_diff = abs(text_color[0] - bg_color[0]) + abs(text_color[1] - bg_color[1]) + abs(text_color[2] - bg_color[2])
-            if color_diff < 100:  # 颜色太接近
+            color_config = config.color_detection
+            # 使用感知色差和亮度差综合判断
+            color_diff = self._perceptual_color_distance(text_color, bg_color)
+            brightness_diff = abs(self._calculate_brightness(text_color) - self._calculate_brightness(bg_color))
+
+            sufficient_contrast = (
+                color_diff >= color_config.contrast_threshold and  # 降低阈值到70
+                brightness_diff >= color_config.min_brightness_diff  # 新增亮度差要求
+            )
+
+            if not sufficient_contrast:
                 # 根据背景亮度选择对比色
-                bg_brightness = sum(bg_color) / 3
+                bg_brightness = self._calculate_brightness(bg_color)
                 if bg_brightness > 127:
                     text_color = (0, 0, 0)  # 浅背景用黑字
                 else:
                     text_color = (255, 255, 255)  # 深背景用白字
-                print(f"[Render] 颜色对比度不足，自动调整: RGB{features.text_color} -> RGB{text_color}")
+                print(f"[Render] 颜色对比度不足，自动调整: RGB{features.text_color} -> RGB{text_color} (色差:{color_diff:.1f}, 亮度差:{brightness_diff:.1f})")
 
         # 调试输出
         print(f"[Render] '{box.translated_text}' @ [{x1},{y1},{x2},{y2}] 字号:{font_size} 颜色:RGB{text_color}")

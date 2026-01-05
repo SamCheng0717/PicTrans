@@ -187,6 +187,7 @@ ls output/
 | `skip_price` | Boolean | `true` | 是否跳过价格翻译 |
 | `skip_promo` | Boolean | `true` | 是否跳过促销信息翻译 |
 | `skip_brand` | Boolean | `false` | 是否跳过品牌名翻译 |
+| `skip_english` | Boolean | `false` | 是否跳过英文文字翻译 |
 | `skip_texts` | Array | `[]` | 自定义跳过的文字列表 |
 
 #### 响应格式
@@ -360,6 +361,8 @@ python cli.py <输入路径> [选项]
 | `--keep-promo` | False | 保留促销信息翻译 |
 | `--skip-brand` | False | 跳过品牌名翻译 |
 | `--keep-brand` | True | 保留品牌名翻译 |
+| `--skip-english` | False | 跳过英文文字翻译 |
+| `--keep-english` | True | 保留英文文字翻译 |
 
 ### 使用示例
 
@@ -418,7 +421,17 @@ python cli.py product.jpg -t ko --keep-price
 python cli.py product.jpg -t ja --no-keep-brand
 ```
 
-#### 示例 6：使用 AI 修复模式（适合复杂背景）
+#### 示例 6：只翻译简体中文，跳过英文
+
+```bash
+# 跳过英文文字翻译（保留中文翻译）
+python cli.py product.jpg -t ko --skip-english
+
+# 或者使用 no-keep-english
+python cli.py product.jpg -t ko --no-keep-english
+```
+
+#### 示例 7：使用 AI 修复模式（适合复杂背景）
 
 ```bash
 # 使用 Qwen AI 进行背景修复（需要部署 Qwen 服务）
@@ -428,21 +441,21 @@ python cli.py product.jpg -t ko --inpaint qwen
 python cli.py product.jpg -t ko --inpaint qwen --qwen-url http://192.168.1.100:8765
 ```
 
-#### 示例 7：调整并发数（加速批量处理）
+#### 示例 8：调整并发数（加速批量处理）
 
 ```bash
 # 同时处理 5 张图片（默认 3 张）
 python cli.py ./images/ -t ko -c 5
 ```
 
-#### 示例 8：自定义输出目录
+#### 示例 9：自定义输出目录
 
 ```bash
 # 指定输出目录
 python cli.py product.jpg -t ko -o ./translations
 ```
 
-#### 示例 9：完整的批量处理示例
+#### 示例 10：完整的批量处理示例（跳过英文）
 
 ```bash
 # 批量处理，翻译为韩语和日语，使用 5 个并发，保留价格
@@ -524,7 +537,7 @@ class TranslatorConfig:
     api_url: str = "https://api.deepseek.com/v1/chat/completions"
     api_key: str = "sk-your-api-key"  # 需要替换为实际的 API 密钥
     model: str = "deepseek-chat"
-    max_tokens: int = 1024
+    max_tokens: int = 2048
     temperature: float = 0.3           # 翻译随机度，越低越确定
     timeout: int = 30
 ```
@@ -1033,7 +1046,30 @@ PicTrans/
 
 ## ❓ 常见问题 (FAQ)
 
-### Q1: 如何调整边界框扩展范围？
+### Q1: 如何只翻译简体中文，跳过英文？
+
+**问题**：图片中同时包含中文和英文，只想翻译中文，保留英文
+
+**解决方案**：使用 `--skip-english` 参数
+
+```bash
+# CLI 模式
+python cli.py product.jpg -t ko --skip-english
+
+# API 模式
+curl -X POST http://localhost:5000/api/translate \
+  -F "image=@product.jpg" \
+  -F "target_lang=ko" \
+  -F "skip_english=true"
+```
+
+**说明**：
+- 系统会自动检测文字是否为英文
+- 英文文字会被标记为 `is_english=True`
+- 启用 `skip_english` 后，这些文字不会被翻译或擦除
+- 适用于中英文混合的电商图片
+
+### Q2: 如何调整边界框扩展范围？
 
 **问题**：某些文字仍然没有被完全覆盖
 
@@ -1046,7 +1082,7 @@ bbox_expand_min: int = 8          # 最小 8px
 bbox_expand_max: int = 30         # 最大 30px
 ```
 
-### Q2: 如何禁用边界框扩展？
+### Q3: 如何禁用边界框扩展？
 
 **问题**：扩展太多影响了效果
 
@@ -1062,7 +1098,7 @@ bbox_expand_min: int = 3          # 最小 3px
 bbox_expand_max: int = 15         # 最大 15px
 ```
 
-### Q3: OpenCV 和 Qwen 修复模式的区别？
+### Q4: OpenCV 和 Qwen 修复模式的区别？
 
 | 特性 | OpenCV | Qwen AI |
 |------|--------|---------|
@@ -1076,7 +1112,7 @@ bbox_expand_max: int = 15         # 最大 15px
 - 默认使用 OpenCV 模式（快速）
 - 复杂背景使用 Qwen AI 模式（高质量）
 
-### Q4: 如何添加新的语言支持？
+### Q5: 如何添加新的语言支持？
 
 **步骤**：
 
@@ -1110,7 +1146,7 @@ bbox_expand_max: int = 15         # 最大 15px
      -F "target_lang=new_lang"
    ```
 
-### Q5: 为什么某些文字没有被翻译？
+### Q6: 为什么某些文字没有被翻译？
 
 **可能原因**：
 
@@ -1119,8 +1155,11 @@ bbox_expand_max: int = 15         # 最大 15px
    [OCR] 识别到 5 个文字框
    [Filter] 跳过文字: ¥299 (role=price)
    [Filter] 跳过文字: 限时5折 (role=promo)
+   [Filter] 跳过文字: WEST (is_english=True, skip_english=True)
    ```
-   **解决方案**：修改 API 参数，设置 `skip_price=false` 或 `skip_promo=false`
+   **解决方案**：修改 API 参数
+   - 设置 `skip_price=false` 或 `skip_promo=false`
+   - 设置 `skip_english=false` 以翻译英文
 
 2. **OCR 没有识别到该文字**
    ```
@@ -1138,7 +1177,7 @@ bbox_expand_max: int = 15         # 最大 15px
    ```
    **解决方案**：从 `skip_texts` 列表中移除该文字
 
-### Q6: 如何查看调试信息？
+### Q7: 如何查看调试信息？
 
 **方法 1：查看控制台日志**
 
@@ -1178,7 +1217,7 @@ python tests/test_ocr_visual.py input/test.jpg
 # 包含识别的文字框和文字内容
 ```
 
-### Q7: 如何处理透明背景的图片？
+### Q8: 如何处理透明背景的图片？
 
 **问题**：透明背景图片修复后变成黑色或白色
 
@@ -1197,7 +1236,7 @@ if img.mode in ('RGBA', 'LA'):
     img.save('input.jpg', 'JPEG')
 ```
 
-### Q8: 翻译速度太慢怎么办？
+### Q9: 翻译速度太慢怎么办？
 
 **可能原因**：
 1. OCR API 响应慢
@@ -1261,7 +1300,7 @@ if img.mode in ('RGBA', 'LA'):
    """
    ```
 
-### Q10: 如何部署到生产环境？
+### Q11: 如何部署到生产环境？
 
 **建议**：
 

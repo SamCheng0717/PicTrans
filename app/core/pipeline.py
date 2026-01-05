@@ -130,6 +130,10 @@ class Pipeline:
             elif task.skip_brand and box.role == TextRole.BRAND:
                 box.skip = True
 
+            # 根据语言过滤（跳过英文）
+            if task.skip_english and box.is_english:
+                box.skip = True
+
             # 根据自定义文字过滤
             if box.text in task.skip_texts:
                 box.skip = True

@@ -47,6 +47,7 @@ async def process_images(
     skip_price: bool,
     skip_promo: bool,
     skip_brand: bool,
+    skip_english: bool,
     max_concurrent: int,
     inpaint_mode: str = "opencv"
 ):
@@ -61,7 +62,8 @@ async def process_images(
             target_lang=target_lang,
             skip_price=skip_price,
             skip_promo=skip_promo,
-            skip_brand=skip_brand
+            skip_brand=skip_brand,
+            skip_english=skip_english
         )
         for img in images
     ]
@@ -179,6 +181,19 @@ def main():
     )
 
     parser.add_argument(
+        "--skip-english",
+        action="store_true",
+        help="跳过英文文字翻译"
+    )
+
+    parser.add_argument(
+        "--keep-english",
+        action="store_true",
+        default=True,
+        help="保留英文文字翻译 (默认: 是)"
+    )
+
+    parser.add_argument(
         "-c", "--concurrent",
         type=int,
         default=3,
@@ -212,6 +227,7 @@ def main():
     skip_price = not args.keep_price
     skip_promo = not args.keep_promo
     skip_brand = args.skip_brand
+    skip_english = not args.keep_english
 
     # 设置输出目录
     if args.output_dir:
@@ -249,6 +265,7 @@ def main():
             skip_price=skip_price,
             skip_promo=skip_promo,
             skip_brand=skip_brand,
+            skip_english=skip_english,
             max_concurrent=args.concurrent,
             inpaint_mode=inpaint_mode
         ))
