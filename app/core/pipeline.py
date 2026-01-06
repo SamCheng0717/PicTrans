@@ -143,16 +143,19 @@ class Pipeline:
             )
             result.translate_time = int((time.time() - translate_start) * 1000)
 
-            # 6. 擦除原文字
+            # 6. 擦除原文字（传入所有框，inpainter内部会根据skip标志过滤）
             render_start = time.time()
-            inpaint_boxes = [b for b in text_boxes if not b.skip and b.translated_text]
 
-            # 调试日志
-            print(f"[Pipeline] 需要inpaint的文字框: {len(inpaint_boxes)}")
-            for box in inpaint_boxes:
-                print(f"  - {box.text} -> {box.translated_text} @ {box.bbox}")
+            # 调试日志：显示哪些框需要处理
+            inpaint_count = len([b for b in text_boxes if not b.skip and b.translated_text])
+            print(f"[Pipeline] 需要inpaint的文字框: {inpaint_count}/{len(text_boxes)}")
+            for box in text_boxes:
+                if not box.skip and box.translated_text:
+                    print(f"  - {box.text} -> {box.translated_text} @ {box.bbox}")
 
-            inpainted_image = self.inpainter.inpaint(image, inpaint_boxes)
+            # 传入所有text_boxes（包括skip的），让inpainter内部处理
+            # 这样可以确保聚类算法考虑所有框的位置关系，生成更准确的mask
+            inpainted_image = self.inpainter.inpaint(image, text_boxes)
 
             # 7. 渲染新文字（使用目标语言对应的字体）
             renderer = TextRenderer(target_lang=task.target_lang)

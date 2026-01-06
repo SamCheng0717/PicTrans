@@ -49,8 +49,6 @@ async def process_images(
     generate_compare: bool = False
 ):
     """处理图片列表"""
-    pipeline = Pipeline(inpaint_mode=inpaint_mode)
-
     # 创建任务列表
     tasks = [
         TranslationTask(
@@ -68,14 +66,38 @@ async def process_images(
     print(f"输出目录: {config.output_dir}")
     print("-" * 50)
 
+    # 为每个任务创建独立的 Pipeline 实例，避免并发时的状态竞争
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def process_single(task):
+        async with semaphore:
+            # 每个任务使用独立的 Pipeline 实例
+            pipeline = Pipeline(inpaint_mode=inpaint_mode)
+            return await pipeline.process(task)
+
     # 批量处理
-    results = await pipeline.process_batch(tasks, max_concurrent)
+    results = await asyncio.gather(
+        *[process_single(task) for task in tasks],
+        return_exceptions=True
+    )
+
+    # 处理异常
+    processed_results = []
+    for result in results:
+        if isinstance(result, Exception):
+            from app.models.schemas import ProcessingResult
+            processed_results.append(ProcessingResult(
+                success=False,
+                error_message=str(result)
+            ))
+        else:
+            processed_results.append(result)
 
     # 统计结果
     success_count = 0
     fail_count = 0
 
-    for i, (task, result) in enumerate(zip(tasks, results)):
+    for i, (task, result) in enumerate(zip(tasks, processed_results)):
         image_name = Path(task.image_path).name
         if result.success:
             success_count += 1
