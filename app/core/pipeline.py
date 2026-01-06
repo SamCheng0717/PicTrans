@@ -1,6 +1,7 @@
 """
 主处理流水线 - 串联所有模块
 """
+import re
 import time
 import asyncio
 import cv2
@@ -33,6 +34,54 @@ class Pipeline:
         self.analyzer = TextAnalyzer()
         self.inpainter = Inpainter(mode=inpaint_mode)
         self.inpaint_mode = inpaint_mode
+
+    @staticmethod
+    def _should_skip_translation(text: str) -> bool:
+        """
+        判断文本是否应该跳过翻译（保留原文）
+
+        跳过规则：
+        1. 纯数字+单位：30L, 220V, 2000W, 460mm, 0.1-0.4Mpa
+        2. 型号：QJH302, QJ-H302 (字母+数字+可选连字符)
+        3. 纯英文品牌名：QUANJIE（全大写/小写英文）
+        4. 尺寸规格：460*420*1550mm, 340mm
+        5. 纯数字：100, 30~100
+
+        不跳过（需要翻译）：
+        - 包含中文：1人1杯, A级品质, 产品货号：
+
+        Args:
+            text: 识别出的文本
+
+        Returns:
+            True - 跳过翻译（保留原文）, False - 需要翻译
+        """
+        text = text.strip()
+        if not text:
+            return True  # 空文本跳过
+
+        # 包含中文 → 需要翻译
+        if re.search(r'[\u4e00-\u9fff]', text):
+            return False
+
+        # 纯数字+单位模式：30L, 220V, 2000W, 460mm, 0.1-0.4Mpa
+        if re.match(r'^[\d.~\-]+[A-Za-z]+$', text):
+            return True
+
+        # 尺寸规格：460*420*1550mm, 340mm
+        if re.match(r'^[\d*]+mm$', text, re.IGNORECASE):
+            return True
+
+        # 型号模式：QJH302, QJ-H302 (字母+数字+连字符组合)
+        if re.match(r'^[A-Za-z]+[\-]?[A-Za-z0-9]+$', text):
+            return True
+
+        # 纯数字：100, 30
+        if re.match(r'^[\d~\-]+$', text):
+            return True
+
+        # 其他情况（如包含特殊符号、混合文本）→ 需要翻译
+        return False
 
     async def process(self, task: TranslationTask) -> ProcessingResult:
         """
@@ -68,6 +117,16 @@ class Pipeline:
             if not text_boxes:
                 result.error_message = "未识别到文字"
                 return result
+
+            # 2.5. 智能判断：标记不需要翻译的文本（型号、规格、单位等）
+            skip_count = 0
+            for box in text_boxes:
+                if self._should_skip_translation(box.text):
+                    box.skip = True
+                    skip_count += 1
+                    print(f"[Pipeline] 跳过翻译（保留原文）: '{box.text}'")
+
+            print(f"[Pipeline] 智能过滤: {len(text_boxes)} 个文本, {skip_count} 个无需翻译")
 
             # 3. 过滤文字框
             text_boxes = self._filter_boxes(text_boxes, task)

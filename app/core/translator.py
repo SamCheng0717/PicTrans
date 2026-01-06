@@ -57,14 +57,14 @@ class Translator:
 1. [翻译结果]
 2. [翻译结果]
 ..."""
-        print(prompt)
+        # print(prompt)
         return prompt
 
     def _parse_response(
         self, response_text: str, original_texts: List[str]
     ) -> Dict[str, str]:
         """解析翻译响应"""
-        print(response_text)
+        # print(response_text)
         translations = {}
         lines = response_text.strip().split("\n")
 
@@ -80,13 +80,13 @@ class Translator:
                 prefix_colon = f"{i + 1}:"
 
                 if line.startswith(prefix_dot):
-                    translated = line[len(prefix_dot):].strip()
+                    translated = line[len(prefix_dot) :].strip()
                     break
                 elif line.startswith(prefix_chinese):
-                    translated = line[len(prefix_chinese):].strip()
+                    translated = line[len(prefix_chinese) :].strip()
                     break
                 elif line.startswith(prefix_colon):
-                    translated = line[len(prefix_colon):].strip()
+                    translated = line[len(prefix_colon) :].strip()
                     break
             else:
                 # 如果没找到匹配，尝试按顺序取

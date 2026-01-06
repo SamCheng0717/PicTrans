@@ -104,7 +104,7 @@ class InpaintConfig:
     sample_padding: int = 10
     blur_kernel: int = 15
     # Mask 扩展像素（防止字边残留）
-    mask_expand: int = 1
+    mask_expand: int = 5
     # 文字框聚类阈值（越小越不容易合并，0=完全不聚类）
     y_threshold_ratio: float = 0.5
 

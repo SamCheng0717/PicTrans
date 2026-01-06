@@ -41,6 +41,17 @@ async def test_iopaint():
         print("✗ 未识别到文字，测试终止")
         return False
 
+    # 1.5. 智能过滤：标记不需要翻译的文本
+    print("[1.5/7] 智能过滤...")
+    from app.core.pipeline import Pipeline
+    skip_count = 0
+    for box in text_boxes:
+        if Pipeline._should_skip_translation(box.text):
+            box.skip = True
+            skip_count += 1
+            print(f"  跳过翻译（保留原文）: '{box.text}'")
+    print(f"✓ 智能过滤完成: {len(text_boxes)} 个文本, {skip_count} 个无需翻译")
+
     # 2. 读取图像
     print("[2/7] 读取图像...")
     image = cv2.imread(test_image)
