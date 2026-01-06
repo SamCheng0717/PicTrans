@@ -26,7 +26,7 @@ class Pipeline:
         初始化流水线
 
         Args:
-            inpaint_mode: inpaint 模式 - "opencv" 或 "qwen"
+            inpaint_mode: inpaint 模式 - "opencv" 或 "iopaint"
         """
         self.ocr = OCRClient()
         self.translator = Translator()
@@ -120,23 +120,22 @@ class Pipeline:
         return result
 
     def _filter_boxes(self, text_boxes: list, task: TranslationTask) -> list:
-        """根据任务配置过滤文字框"""
+        """
+        过滤文字框（使用固定规则）
+
+        默认行为:
+        - 跳过价格 (PRICE)
+        - 跳过促销 (PROMO)
+        - 保留品牌 (BRAND)
+        - 保留特征文字 (FEATURE/SLOGAN)
+        """
         for box in text_boxes:
-            # 根据角色过滤
-            if task.skip_price and box.role == TextRole.PRICE:
+            # 固定过滤规则
+            if box.role == TextRole.PRICE:
                 box.skip = True
-            elif task.skip_promo and box.role == TextRole.PROMO:
+            elif box.role == TextRole.PROMO:
                 box.skip = True
-            elif task.skip_brand and box.role == TextRole.BRAND:
-                box.skip = True
-
-            # 根据语言过滤（跳过英文）
-            if task.skip_english and box.is_english:
-                box.skip = True
-
-            # 根据自定义文字过滤
-            if box.text in task.skip_texts:
-                box.skip = True
+            # BRAND, FEATURE, SLOGAN, UNKNOWN 默认保留
 
         return text_boxes
 

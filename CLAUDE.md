@@ -10,8 +10,7 @@ PicTrans is an AI-powered image translation system specialized for e-commerce pr
 - Flask web framework with Blueprint architecture
 - DeepSeek-OCR API for text recognition
 - DeepSeek Translation API for text translation
-- OpenCV for image processing and background restoration (default)
-- Qwen AI for intelligent background restoration (optional mode)
+- OpenCV for image processing and background restoration
 - PIL/Pillow for image manipulation
 
 ## Development Commands
@@ -68,18 +67,12 @@ python cli.py <input_path> [options]
   -s, --source-lang    Source language (default: zh)
   -c, --concurrent     Concurrent processing count (default: 3)
   -o, --output-dir     Output directory (default: ./output)
-  --inpaint            Inpaint mode: opencv or qwen (default: opencv)
-  --skip-price         Skip price text (default: True)
-  --keep-price         Translate price text
-  --skip-promo         Skip promo text (default: True)
-  --keep-promo         Translate promo text
-  --skip-brand         Skip brand text (default: False)
-  --keep-brand         Translate brand text (default: True)
+  --inpaint            Inpaint mode: opencv or iopaint (default: opencv)
 
 # Examples
 python cli.py product.jpg -t ko
 python cli.py ./images/ -t ko -t ja -c 5
-python cli.py product.jpg -t ko --keep-price --inpaint qwen
+python cli.py product.jpg -t ko -o ./translated
 ```
 
 ### OCR Visualization Test
@@ -180,28 +173,29 @@ Configure in `app/config.py`:
 
 ### Text Filtering Strategy
 
-Text boxes are filtered based on `TextRole` enum:
-- PRICE → skipped by default (`skip_price=True`)
-- PROMO → skipped by default (`skip_promo=True`)
-- BRAND → translated by default (`skip_brand=False`)
+Text boxes are filtered using fixed rules based on `TextRole` enum:
+- PRICE → always skipped
+- PROMO → always skipped
+- BRAND → always translated
 - FEATURE/SLOGAN → always translated
+- UNKNOWN → always translated
 
-Custom skip lists via API parameter `skip_texts`.
+These rules are implemented in `pipeline.py::_filter_boxes()` and cannot be customized via CLI or API parameters.
 
 ### Background Restoration Modes
 
-**OpenCV Mode** (default):
+**OpenCV Mode** (default and currently only supported):
 - Fast (~0.5s)
 - Background color sampling with median
 - Mask expansion of 8px to prevent edge artifacts
 - Clustering algorithm merges adjacent text boxes
 - Best for solid color backgrounds
+- Gradient background support via intelligent detection
 
-**Qwen AI Mode**:
-- Slower (~5-10s)
-- Requires separate Qwen server deployment
-- AI-powered background reconstruction
-- Best for complex/gradient backgrounds
+**iopaint Mode** (planned):
+- Will be integrated in the future
+- AI-powered background reconstruction for complex backgrounds
+- Currently falls back to OpenCV if specified
 
 Configure via API parameter `inpaint_mode` or `InpaintConfig.mode`.
 
@@ -279,8 +273,7 @@ bbox_expand_max: int = 30
 ### Adding New Text Roles
 
 1. Add enum value to `TextRole` in `app/models/schemas.py`
-2. Update filtering logic in `pipeline.py::_filter_boxes()`
-3. Add skip flag to `TranslationTask` if needed
+2. Update filtering logic in `pipeline.py::_filter_boxes()` to define the skip behavior for the new role
 
 ### Changing Translation Prompts
 
@@ -295,29 +288,7 @@ Edit `_build_prompt()` in `app/core/translator.py`. The current prompt is optimi
 2. Add mode parameter to `__init__()` method
 3. Update `inpaint()` method to route to new mode
 4. Update `InpaintConfig` in `app/config.py`
-
-### Adding CLI Options
-
-1. Add argument in `cli.py::main()` using `argparse`
-2. Pass argument to `TranslationTask` or config
-3. Update `process_images()` function if needed
-4. Add help text and examples
-
-Example:
-```python
-# In cli.py
-parser.add_argument(
-    "--new-option",
-    action="store_true",
-    help="Description of new option"
-)
-
-# Pass to task
-task = TranslationTask(
-    ...,
-    new_option=args.new_option
-)
-```
+5. Update the choices in `cli.py` `--inpaint` argument
 
 ## CLI Mode Architecture
 
@@ -359,9 +330,7 @@ For each target_lang:
 - `-s, --source-lang`: Default "zh"
 - `-c, --concurrent`: Default 3, controls parallel processing
 - `-o, --output-dir`: Overrides default output directory
-- `--inpaint`: Mode selection (opencv/qwen)
-- `--qwen-url`: Qwen server URL for AI inpainting
-- Filter flags: `--skip-price`, `--keep-price`, `--skip-promo`, `--keep-promo`, `--skip-brand`, `--keep-brand`
+- `--inpaint`: Mode selection (opencv/iopaint, default: opencv)
 
 ### Concurrency Model
 

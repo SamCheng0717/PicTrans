@@ -86,17 +86,8 @@ class TranslationTask:
 
     # 可选参数
     font_name: Optional[str] = None  # 指定字体
-    inpaint_mode: str = "opencv"     # opencv / lama
+    inpaint_mode: str = "opencv"     # opencv / iopaint (iopaint 待实现)
     quality: str = "high"            # high / medium / fast
-
-    # 过滤选项
-    skip_price: bool = True
-    skip_promo: bool = True
-    skip_brand: bool = False
-    skip_english: bool = False  # 跳过英文文字翻译
-
-    # 自定义跳过的文字
-    skip_texts: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -139,17 +130,10 @@ class APIRequest:
     font_weight: str = "auto"        # auto / thin / regular / bold 等
 
     # 修复模式
-    inpaint_mode: str = "opencv"     # opencv / lama
+    inpaint_mode: str = "opencv"     # opencv / iopaint (iopaint 待实现)
 
     # 质量设置
     quality: str = "high"            # high / medium / fast
-
-    # 过滤设置
-    skip_price: bool = True
-    skip_promo: bool = True
-    skip_brand: bool = False
-    skip_english: bool = False  # 跳过英文文字翻译
-    skip_texts: List[str] = field(default_factory=list)
 
 
 @dataclass

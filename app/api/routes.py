@@ -77,12 +77,6 @@ def translate_image():
             source_lang = request.form.get("source_lang", "zh")
             target_lang = request.form.get("target_lang", "ko")
             inpaint_mode = request.form.get("inpaint_mode", "opencv")
-            skip_price = request.form.get("skip_price", "true").lower() == "true"
-            skip_promo = request.form.get("skip_promo", "true").lower() == "true"
-            skip_brand = request.form.get("skip_brand", "false").lower() == "true"
-            skip_english = request.form.get("skip_english", "false").lower() == "true"
-            skip_texts = request.form.get("skip_texts", "").split(",")
-            skip_texts = [t.strip() for t in skip_texts if t.strip()]
 
         else:
             # JSON方式
@@ -123,23 +117,15 @@ def translate_image():
             source_lang = data.get("source_lang", "zh")
             target_lang = data.get("target_lang", "ko")
             inpaint_mode = data.get("inpaint_mode", "opencv")
-            skip_price = data.get("skip_price", True)
-            skip_promo = data.get("skip_promo", True)
-            skip_brand = data.get("skip_brand", False)
-            skip_english = data.get("skip_english", False)
-            skip_texts = data.get("skip_texts", [])
 
         # 创建任务
+        # 注意: skip_* 参数已移除，现在使用固定的过滤规则
+        # 旧的 API 调用会静默忽略这些参数（向后兼容）
         task = TranslationTask(
             image_path=image_path,
             source_lang=source_lang,
             target_lang=target_lang,
-            inpaint_mode=inpaint_mode,
-            skip_price=skip_price,
-            skip_promo=skip_promo,
-            skip_brand=skip_brand,
-            skip_english=skip_english,
-            skip_texts=skip_texts
+            inpaint_mode=inpaint_mode
         )
 
         # 执行处理

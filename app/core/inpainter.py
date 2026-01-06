@@ -1,13 +1,10 @@
 """
 背景修复模块 - 擦除原文字
-支持 OpenCV（默认）和 Qwen-Image-Edit-2511（AI 模式）
+支持 OpenCV（默认）和 iopaint（AI 模式，待实现）
 """
 import cv2
 import numpy as np
 from typing import List, Tuple, Optional
-from PIL import Image
-import io
-import base64
 
 from ..config import config
 from ..models.schemas import TextBox
@@ -21,7 +18,7 @@ class Inpainter:
         初始化修复器
 
         Args:
-            mode: 修复模式 - "opencv" 或 "qwen"
+            mode: 修复模式 - "opencv" 或 "iopaint" (iopaint 待实现)
         """
         self.mode = mode
         self.opencv_radius = config.inpaint.opencv_radius
@@ -29,9 +26,6 @@ class Inpainter:
         self.sample_padding = config.inpaint.sample_padding
         self.blur_kernel = config.inpaint.blur_kernel
         self.mask_expand = getattr(config.inpaint, 'mask_expand', 8)
-
-        # Qwen 客户端（延迟初始化）
-        self._qwen_client = None
 
     def inpaint(self, image: np.ndarray, text_boxes: List[TextBox]) -> np.ndarray:
         """
@@ -51,11 +45,15 @@ class Inpainter:
         clusters = self._cluster_boxes(text_boxes)
         print(f"[Inpaint] 聚类结果: {len(text_boxes)} 个框 -> {len(clusters)} 个聚类")
 
+        # 当前仅支持 opencv，未来将添加 iopaint
         if self.mode == "opencv":
             return self._inpaint_opencv(image, text_boxes, clusters)
-        elif self.mode == "qwen":
-            return self._inpaint_qwen(image, text_boxes, clusters)
+        elif self.mode == "iopaint":
+            # TODO: 集成 iopaint 后实现
+            print(f"[Inpaint] iopaint 模式尚未实现，回退到 opencv")
+            return self._inpaint_opencv(image, text_boxes, clusters)
         else:
+            print(f"[Inpaint] 未知模式 '{self.mode}'，使用默认 opencv")
             return self._inpaint_opencv(image, text_boxes, clusters)
 
     def _cluster_boxes(self, text_boxes: List[TextBox], y_threshold_ratio: float = 1.5) -> List[List[TextBox]]:
@@ -356,62 +354,6 @@ class Inpainter:
         is_gradient = np.mean(std_color) > 30
 
         return (bg_color, is_gradient)
-
-    def _inpaint_qwen(self, image: np.ndarray, text_boxes: List[TextBox], clusters: List[List[TextBox]] = None) -> np.ndarray:
-        """
-        使用 Qwen-Image-Edit-2511 AI 模型进行修复
-
-        Args:
-            image: 原始图像 (BGR)
-            text_boxes: 文字框列表
-            clusters: 聚类后的文字框
-
-        Returns:
-            修复后的图像
-        """
-        import asyncio
-
-        # 延迟导入 Qwen 客户端
-        if self._qwen_client is None:
-            from .qwen_inpaint_client import QwenInpaintClient
-            qwen_api_url = getattr(config.inpaint, 'qwen_api_url', 'http://localhost:8765')
-            self._qwen_client = QwenInpaintClient(qwen_api_url)
-
-        h, w = image.shape[:2]
-        print(f"[Inpaint-Qwen] 图像尺寸: {w}x{h}, 使用 AI 模式")
-
-        # 使用聚类 mask（如果有聚类）或普通 mask
-        if clusters:
-            mask = self._create_cluster_mask(image.shape, clusters)
-        else:
-            mask = self._create_mask(image.shape, text_boxes)
-
-        # 调用 Qwen API
-        try:
-            result = asyncio.run(self._qwen_client.inpaint(image, mask))
-            print(f"[Inpaint-Qwen] AI 修复完成")
-            return result
-        except Exception as e:
-            print(f"[Inpaint-Qwen] AI 修复失败: {e}，回退到 OpenCV")
-            return self._inpaint_opencv(image, text_boxes, clusters)
-
-    def _image_to_base64(self, image: np.ndarray) -> str:
-        """将 OpenCV 图像转换为 base64"""
-        # BGR -> RGB
-        rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        pil_image = Image.fromarray(rgb_image)
-
-        buffer = io.BytesIO()
-        pil_image.save(buffer, format='PNG')
-        return base64.b64encode(buffer.getvalue()).decode('utf-8')
-
-    def _mask_to_base64(self, mask: np.ndarray) -> str:
-        """将 mask 转换为 base64"""
-        pil_mask = Image.fromarray(mask)
-
-        buffer = io.BytesIO()
-        pil_mask.save(buffer, format='PNG')
-        return base64.b64encode(buffer.getvalue()).decode('utf-8')
 
     def inpaint_single(
         self,

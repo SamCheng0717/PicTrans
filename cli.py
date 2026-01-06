@@ -44,10 +44,6 @@ async def process_images(
     images: List[Path],
     target_lang: str,
     source_lang: str,
-    skip_price: bool,
-    skip_promo: bool,
-    skip_brand: bool,
-    skip_english: bool,
     max_concurrent: int,
     inpaint_mode: str = "opencv"
 ):
@@ -60,10 +56,7 @@ async def process_images(
             image_path=str(img),
             source_lang=source_lang,
             target_lang=target_lang,
-            skip_price=skip_price,
-            skip_promo=skip_promo,
-            skip_brand=skip_brand,
-            skip_english=skip_english
+            inpaint_mode=inpaint_mode
         )
         for img in images
     ]
@@ -106,20 +99,20 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  # 处理单张图片（默认使用 OpenCV）
+  # 处理单张图片
   python cli.py input.jpg -t ko
 
   # 处理整个文件夹
   python cli.py ./images/ -t ko
 
-  # 翻译成日文，保留品牌
-  python cli.py ./images/ -t ja --keep-brand
-
   # 多语言输出
   python cli.py input.jpg -t ko -t ja -t en
 
-  # 使用 AI inpaint（需要 GPU 服务器）
-  python cli.py input.jpg -t ko --inpaint qwen --qwen-url http://192.168.1.100:8765
+  # 指定并发数
+  python cli.py ./images/ -t ko -c 5
+
+  # 自定义输出目录
+  python cli.py input.jpg -t ko -o ./translated
         """
     )
 
@@ -142,58 +135,6 @@ def main():
     )
 
     parser.add_argument(
-        "--skip-price",
-        action="store_true",
-        default=True,
-        help="跳过价格文字 (默认: 是)"
-    )
-
-    parser.add_argument(
-        "--keep-price",
-        action="store_true",
-        help="保留价格文字"
-    )
-
-    parser.add_argument(
-        "--skip-promo",
-        action="store_true",
-        default=True,
-        help="跳过促销文字 (默认: 是)"
-    )
-
-    parser.add_argument(
-        "--keep-promo",
-        action="store_true",
-        help="保留促销文字"
-    )
-
-    parser.add_argument(
-        "--skip-brand",
-        action="store_true",
-        help="跳过品牌名"
-    )
-
-    parser.add_argument(
-        "--keep-brand",
-        action="store_true",
-        default=True,
-        help="保留品牌名 (默认: 是)"
-    )
-
-    parser.add_argument(
-        "--skip-english",
-        action="store_true",
-        help="跳过英文文字翻译"
-    )
-
-    parser.add_argument(
-        "--keep-english",
-        action="store_true",
-        default=True,
-        help="保留英文文字翻译 (默认: 是)"
-    )
-
-    parser.add_argument(
         "-c", "--concurrent",
         type=int,
         default=3,
@@ -207,15 +148,9 @@ def main():
 
     parser.add_argument(
         "--inpaint",
-        choices=["opencv", "qwen"],
+        choices=["opencv", "iopaint"],
         default="opencv",
-        help="Inpaint 模式: opencv(默认,快速) 或 qwen(AI,需要GPU服务器)"
-    )
-
-    parser.add_argument(
-        "--qwen-url",
-        default=None,
-        help="Qwen inpaint 服务器地址 (默认: http://localhost:8765)"
+        help="Inpaint 模式: opencv(默认) 或 iopaint(待实现)"
     )
 
     args = parser.parse_args()
@@ -223,20 +158,10 @@ def main():
     # 处理语言参数
     target_langs = args.target_lang if args.target_lang else ["ko"]
 
-    # 处理过滤参数
-    skip_price = not args.keep_price
-    skip_promo = not args.keep_promo
-    skip_brand = args.skip_brand
-    skip_english = not args.keep_english
-
     # 设置输出目录
     if args.output_dir:
         config.output_dir = Path(args.output_dir)
         config.output_dir.mkdir(parents=True, exist_ok=True)
-
-    # 设置 Qwen API URL
-    if args.qwen_url:
-        config.inpaint.qwen_api_url = args.qwen_url
 
     # Inpaint 模式
     inpaint_mode = args.inpaint
@@ -262,10 +187,6 @@ def main():
             images=images,
             target_lang=target_lang,
             source_lang=args.source_lang,
-            skip_price=skip_price,
-            skip_promo=skip_promo,
-            skip_brand=skip_brand,
-            skip_english=skip_english,
             max_concurrent=args.concurrent,
             inpaint_mode=inpaint_mode
         ))
