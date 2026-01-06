@@ -468,10 +468,12 @@ class TextAnalyzer:
 
     def _detect_text_color(self, roi: np.ndarray, bg_color: Tuple[int, int, int] = None) -> Tuple[int, int, int]:
         """
-        改进的文字颜色检测：K-means聚类 + 占比分析
+        改进的文字颜色检测：K-means聚类(3簇) + 对比度优先
 
-        核心思路：从原图ROI使用K-means聚类提取2种主色，
-        占比小的是文字色，占比大的是背景色
+        核心改进：
+        1. 使用3簇聚类（背景/描边/主色）
+        2. 排除占比>50%的簇（可能是背景）
+        3. 选择对比度最高的簇作为文字色
 
         Args:
             roi: 文字区域图像 (BGR) - 来自原图
@@ -485,7 +487,7 @@ class TextAnalyzer:
 
         color_config = config.color_detection
 
-        # K-means聚类提取2种主色
+        # K-means聚类提取3种主色
         pixels = roi.reshape(-1, 3).astype(np.float32)
 
         # 如果像素太少，直接使用中位数
@@ -496,38 +498,58 @@ class TextAnalyzer:
         try:
             criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1.0)
             _, labels, centers = cv2.kmeans(
-                pixels, 2, None, criteria, 10, cv2.KMEANS_PP_CENTERS
+                pixels, 3, None, criteria, 10, cv2.KMEANS_PP_CENTERS  # 改为3簇
             )
 
             # 计算每个聚类的占比
             unique, counts = np.unique(labels, return_counts=True)
             ratios = counts / len(labels)
 
-            # 转换聚类中心为RGB
-            color0 = (int(centers[0][2]), int(centers[0][1]), int(centers[0][0]))
-            color1 = (int(centers[1][2]), int(centers[1][1]), int(centers[1][0]))
+            # 转换为RGB并计算与背景的对比度
+            colors = []
+            for i in range(3):
+                color_rgb = (int(centers[i][2]), int(centers[i][1]), int(centers[i][0]))
+                contrast = 0
+                if bg_color:
+                    contrast = self._perceptual_color_distance(color_rgb, bg_color)
+                colors.append({
+                    'rgb': color_rgb,
+                    'ratio': ratios[i],
+                    'contrast': contrast,
+                    'index': i
+                })
 
-            # 策略：占比小的更可能是文字
-            if ratios[0] < 0.4:  # 聚类0占比<40%
-                text_color = color0
-                bg_color_detected = color1
+            # 选择策略：排除占比>50%的（可能是背景），在剩余中选择对比度最高的
+            candidates = [c for c in colors if c['ratio'] < 0.5]
+
+            if not candidates:
+                # 所有簇都占比过大，选择占比最小的
+                candidates = [min(colors, key=lambda x: x['ratio'])]
+
+            # 按对比度排序
+            if bg_color:
+                best = max(candidates, key=lambda x: x['contrast'])
             else:
-                text_color = color1
-                bg_color_detected = color0
+                # 无背景色，选择占比最小的
+                best = min(candidates, key=lambda x: x['ratio'])
+
+            text_color = best['rgb']
 
             if color_config.debug_mode:
-                print(f"[ColorDetect] K-means聚类: 颜色0=RGB{color0} ({ratios[0]:.1%}), 颜色1=RGB{color1} ({ratios[1]:.1%})")
-                print(f"[ColorDetect] 选择文字色: RGB{text_color}")
+                print(f"[ColorDetect] K-means(3簇):")
+                for c in colors:
+                    print(f"  簇{c['index']}: RGB{c['rgb']}, 占比{c['ratio']:.1%}, 对比度{c['contrast']:.1f}")
+                print(f"[ColorDetect] 选择簇{best['index']}: RGB{text_color}")
 
-            # 验证：文字色应该与背景色有足够对比度
+            # 验证：文字色应该与背景色有足够对比度（放宽阈值：50 -> 30）
             if bg_color:
                 contrast = self._perceptual_color_distance(text_color, bg_color)
-                if contrast < 50:  # 对比度不足，使用黑白兜底
+                if contrast < 30:  # 降低阈值，减少误判
                     bg_brightness = self._calculate_brightness(bg_color)
                     fallback_color = (0, 0, 0) if bg_brightness > 210 else (255, 255, 255)
 
                     if color_config.debug_mode:
-                        print(f"[ColorDetect] 对比度不足({contrast:.1f}), 兜底策略: RGB{text_color} -> RGB{fallback_color}")
+                        print(f"[ColorDetect] 对比度过低({contrast:.1f}), 兜底策略: RGB{text_color} -> RGB{fallback_color}")
 
                     text_color = fallback_color
 

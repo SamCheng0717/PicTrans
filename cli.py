@@ -84,11 +84,12 @@ async def process_images(
             print(f"  识别: {result.total_texts} 个文字, 翻译: {result.translated_texts}, 跳过: {result.skipped_texts}")
             print(f"  耗时: {result.total_time}ms (OCR:{result.ocr_time}ms, 翻译:{result.translate_time}ms, 渲染:{result.render_time}ms)")
 
-            # 生成对比图
+            # 生成对比图（仅生成对比图，删除单独的翻译图）
             if generate_compare:
                 try:
                     import cv2
                     import numpy as np
+                    import os
 
                     # 读取原图和翻译后的图
                     original = cv2.imread(task.image_path)
@@ -98,14 +99,23 @@ async def process_images(
                         # 水平拼接
                         comparison = np.hstack([original, translated])
 
-                        # 生成对比图文件名
+                        # 生成对比图文件名（使用原翻译图的文件名，添加_compare后缀）
                         output_path = Path(result.output_path)
                         compare_name = output_path.stem + "_compare" + output_path.suffix
                         compare_path = output_path.parent / compare_name
 
                         # 保存对比图
                         cv2.imwrite(str(compare_path), comparison)
+
+                        # 删除单独的翻译图
+                        if os.path.exists(result.output_path):
+                            os.remove(result.output_path)
+
+                        # 更新输出路径为对比图路径
+                        result.output_path = str(compare_path)
                         print(f"  对比图: {compare_path}")
+                    else:
+                        print(f"  对比图生成失败: 无法读取图片")
                 except Exception as e:
                     print(f"  对比图生成失败: {e}")
         else:
@@ -140,10 +150,10 @@ def main():
   # 自定义输出目录
   python cli.py input.jpg -t ko -o ./translated
 
-  # 生成原图与翻译图的对比图
+  # 仅生成对比图（不保存单独的翻译图）
   python cli.py input.jpg -t ko --compare
 
-  # 使用 IOPaint 模式并生成对比图
+  # 使用 IOPaint 模式并仅生成对比图
   python cli.py ./images/ -t ko --inpaint iopaint --compare
         """
     )
@@ -188,7 +198,7 @@ def main():
     parser.add_argument(
         "--compare",
         action="store_true",
-        help="生成原图与翻译图的对比图（水平拼接）"
+        help="仅生成原图与翻译图的对比图（水平拼接），不保存单独的翻译图"
     )
 
     args = parser.parse_args()
