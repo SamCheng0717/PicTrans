@@ -21,7 +21,7 @@ from app.core.text_renderer import TextRenderer
 async def test_iopaint():
     """测试 IOPaint 模式的完整流程"""
 
-    test_image = "E:\\PicTrans\\input\\demo_group\\4.jpg"
+    test_image = "E:\\PicTrans\\input\\demo_group\\1.jpg"
 
     if not Path(test_image).exists():
         print(f"测试图片不存在: {test_image}")

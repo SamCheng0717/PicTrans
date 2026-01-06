@@ -6,7 +6,10 @@
       "Bash(python cli.py:*)",
       "WebSearch",
       "WebFetch(domain:replicate.com)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(for f in *)",
+      "Bash(do echo \"$f\")",
+      "Bash(done)"
     ]
   }
 }

@@ -29,10 +29,10 @@ def find_images(input_path: str) -> List[Path]:
             return []
 
     elif path.is_dir():
-        images = []
+        images = set()  # 使用 set 去重（Windows 文件系统不区分大小写会导致重复）
         for ext in extensions:
-            images.extend(path.glob(f"*{ext}"))
-            images.extend(path.glob(f"*{ext.upper()}"))
+            images.update(path.glob(f"*{ext}"))
+            images.update(path.glob(f"*{ext.upper()}"))
         return sorted(images)
 
     else:
@@ -45,7 +45,8 @@ async def process_images(
     target_lang: str,
     source_lang: str,
     max_concurrent: int,
-    inpaint_mode: str = "opencv"
+    inpaint_mode: str = "opencv",
+    generate_compare: bool = False
 ):
     """处理图片列表"""
     pipeline = Pipeline(inpaint_mode=inpaint_mode)
@@ -82,6 +83,31 @@ async def process_images(
             print(f"  输出: {result.output_path}")
             print(f"  识别: {result.total_texts} 个文字, 翻译: {result.translated_texts}, 跳过: {result.skipped_texts}")
             print(f"  耗时: {result.total_time}ms (OCR:{result.ocr_time}ms, 翻译:{result.translate_time}ms, 渲染:{result.render_time}ms)")
+
+            # 生成对比图
+            if generate_compare:
+                try:
+                    import cv2
+                    import numpy as np
+
+                    # 读取原图和翻译后的图
+                    original = cv2.imread(task.image_path)
+                    translated = cv2.imread(result.output_path)
+
+                    if original is not None and translated is not None:
+                        # 水平拼接
+                        comparison = np.hstack([original, translated])
+
+                        # 生成对比图文件名
+                        output_path = Path(result.output_path)
+                        compare_name = output_path.stem + "_compare" + output_path.suffix
+                        compare_path = output_path.parent / compare_name
+
+                        # 保存对比图
+                        cv2.imwrite(str(compare_path), comparison)
+                        print(f"  对比图: {compare_path}")
+                except Exception as e:
+                    print(f"  对比图生成失败: {e}")
         else:
             fail_count += 1
             print(f"✗ [{i+1}/{len(tasks)}] {image_name}")
@@ -113,6 +139,12 @@ def main():
 
   # 自定义输出目录
   python cli.py input.jpg -t ko -o ./translated
+
+  # 生成原图与翻译图的对比图
+  python cli.py input.jpg -t ko --compare
+
+  # 使用 IOPaint 模式并生成对比图
+  python cli.py ./images/ -t ko --inpaint iopaint --compare
         """
     )
 
@@ -153,6 +185,12 @@ def main():
         help="Inpaint 模式: opencv(默认) 或 iopaint(待实现)"
     )
 
+    parser.add_argument(
+        "--compare",
+        action="store_true",
+        help="生成原图与翻译图的对比图（水平拼接）"
+    )
+
     args = parser.parse_args()
 
     # 处理语言参数
@@ -188,7 +226,8 @@ def main():
             target_lang=target_lang,
             source_lang=args.source_lang,
             max_concurrent=args.concurrent,
-            inpaint_mode=inpaint_mode
+            inpaint_mode=inpaint_mode,
+            generate_compare=args.compare
         ))
 
         total_success += success

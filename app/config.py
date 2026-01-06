@@ -106,7 +106,7 @@ class InpaintConfig:
     # Mask 扩展像素（防止字边残留）
     mask_expand: int = 5
     # 文字框聚类阈值（越小越不容易合并，0=完全不聚类）
-    y_threshold_ratio: float = 0.5
+    y_threshold_ratio: float = 0
 
     # IOPaint AI 修复配置
     iopaint_api_url: str = "http://192.168.103.43:8080"  # IOPaint 服务地址
@@ -164,6 +164,7 @@ class ColorDetectionConfig:
     contrast_threshold: int = 70  # 对比度阈值（从100降低到70）
     use_perceptual_distance: bool = True  # 使用感知色差
     min_brightness_diff: int = 30  # 最小亮度差
+    wcag_min_contrast_ratio: float = 4.5  # WCAG 2.0标准最小对比度比率（4.5:1）
 
     # 调试模式
     debug_mode: bool = True  # 启用调试模式（详细日志）
