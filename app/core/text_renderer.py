@@ -20,6 +20,14 @@ class TextRenderer:
         self.target_lang = target_lang
         self._font_cache = {}
 
+    @staticmethod
+    def _contains_chinese(text: str) -> bool:
+        """判断文本是否包含中文字符"""
+        for char in text:
+            if '\u4e00' <= char <= '\u9fff':
+                return True
+        return False
+
     def _get_font(self, weight: str, size: int) -> ImageFont.FreeTypeFont:
         """获取字体对象（带缓存）"""
         cache_key = f"{self.target_lang}_{weight}_{size}"
@@ -150,9 +158,16 @@ class TextRenderer:
         draw = ImageDraw.Draw(pil_image)
 
         for box in text_boxes:
-            if box.skip or not box.translated_text:
+            # 跳过标记为skip的框（翻译失败或需要保留原图的文字）
+            if box.skip:
                 continue
 
+            # 跳过空翻译（None或空字符串）
+            if not box.translated_text:
+                print(f"[Render] 跳过空翻译: '{box.text}'")
+                continue
+
+            # 渲染翻译后的文字
             self._render_text_box(pil_image, draw, box)
 
         # 转回OpenCV格式
@@ -189,6 +204,8 @@ class TextRenderer:
         bg_color = features.background_color
 
         # 检查文字和背景颜色对比度，如果太接近则自动调整
+        # 🔧 临时禁用对比度自动调整 - 用于调试颜色问题
+        """
         if bg_color:
             color_config = config.color_detection
             # 使用感知色差和亮度差综合判断
@@ -208,6 +225,7 @@ class TextRenderer:
                 else:
                     text_color = (255, 255, 255)  # 深背景用白字
                 print(f"[Render] 颜色对比度不足，自动调整: RGB{features.text_color} -> RGB{text_color} (色差:{color_diff:.1f}, 亮度差:{brightness_diff:.1f})")
+        """
 
         # 调试输出
         print(f"[Render] '{box.translated_text}' @ [{x1},{y1},{x2},{y2}] 字号:{font_size} 颜色:RGB{text_color}")

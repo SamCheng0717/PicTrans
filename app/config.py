@@ -96,7 +96,7 @@ class FontConfig:
 @dataclass
 class InpaintConfig:
     """图像修复配置"""
-    mode: str = "opencv"  # opencv / iopaint (iopaint 待实现)
+    mode: str = "opencv"  # opencv / iopaint
     # OpenCV inpaint 参数
     opencv_radius: int = 5
     opencv_method: str = "telea"  # telea / ns (Navier-Stokes)
@@ -104,7 +104,17 @@ class InpaintConfig:
     sample_padding: int = 10
     blur_kernel: int = 15
     # Mask 扩展像素（防止字边残留）
-    mask_expand: int = 8
+    mask_expand: int = 1
+    # 文字框聚类阈值（越小越不容易合并，0=完全不聚类）
+    y_threshold_ratio: float = 0.5
+
+    # IOPaint AI 修复配置
+    iopaint_api_url: str = "http://192.168.103.43:8080"  # IOPaint 服务地址
+    iopaint_timeout: int = 60  # 超时时间（秒），AI 修复较慢
+    iopaint_model: str = "lama"  # 修复模型：lama（推荐）/ ldm / fcf
+    iopaint_ldm_steps: int = 20  # LDM 推理步数
+    iopaint_no_half: bool = False  # 禁用半精度（FP16）
+    iopaint_size_limit: str = "2000"  # 最大边长限制（像素）
 
 
 @dataclass

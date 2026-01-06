@@ -10,7 +10,8 @@ PicTrans is an AI-powered image translation system specialized for e-commerce pr
 - Flask web framework with Blueprint architecture
 - DeepSeek-OCR API for text recognition
 - DeepSeek Translation API for text translation
-- OpenCV for image processing and background restoration
+- OpenCV for image processing and background restoration (default)
+- IOPaint service for AI-powered background restoration (optional)
 - PIL/Pillow for image manipulation
 
 ## Development Commands
@@ -67,11 +68,12 @@ python cli.py <input_path> [options]
   -s, --source-lang    Source language (default: zh)
   -c, --concurrent     Concurrent processing count (default: 3)
   -o, --output-dir     Output directory (default: ./output)
-  --inpaint            Inpaint mode: opencv or iopaint (default: opencv)
+  --inpaint            Inpaint mode: opencv(default) or iopaint(AI-powered)
 
 # Examples
 python cli.py product.jpg -t ko
 python cli.py ./images/ -t ko -t ja -c 5
+python cli.py product.jpg -t ko --inpaint iopaint  # Use AI inpainting
 python cli.py product.jpg -t ko -o ./translated
 ```
 
@@ -126,6 +128,7 @@ class TextBox:
 - `translator.py` - Translation API with e-commerce optimized prompts
 - `text_analyzer.py` - Visual feature detection (color, stroke, shadow, font)
 - `inpainter.py` - Background restoration with clustering and mask expansion
+- `iopaint_client.py` - IOPaint HTTP API client for AI-powered inpainting
 - `text_renderer.py` - Adaptive text rendering with font fitting
 - `pipeline.py` - Orchestrates all modules in sequence
 
@@ -184,7 +187,7 @@ These rules are implemented in `pipeline.py::_filter_boxes()` and cannot be cust
 
 ### Background Restoration Modes
 
-**OpenCV Mode** (default and currently only supported):
+**OpenCV Mode** (default):
 - Fast (~0.5s)
 - Background color sampling with median
 - Mask expansion of 8px to prevent edge artifacts
@@ -192,12 +195,24 @@ These rules are implemented in `pipeline.py::_filter_boxes()` and cannot be cust
 - Best for solid color backgrounds
 - Gradient background support via intelligent detection
 
-**iopaint Mode** (planned):
-- Will be integrated in the future
+**iopaint Mode** (AI-powered):
+- Slower (~5-10s depending on image size)
+- Uses IOPaint service with LAMA model
 - AI-powered background reconstruction for complex backgrounds
-- Currently falls back to OpenCV if specified
+- Requires IOPaint server deployment (configured at http://192.168.103.43:8080/ by default)
+- Best for complex textures, gradients, and photo backgrounds
+- Configurable via `config.inpaint.iopaint_*` parameters
+- On error, throws exception directly (no fallback to OpenCV)
 
-Configure via API parameter `inpaint_mode` or `InpaintConfig.mode`.
+**IOPaint Configuration** (in `app/config.py`):
+- `iopaint_api_url`: IOPaint service address (default: http://192.168.103.43:8080)
+- `iopaint_timeout`: Request timeout in seconds (default: 60)
+- `iopaint_model`: Model to use - lama/ldm/fcf (default: lama)
+- `iopaint_ldm_steps`: LDM inference steps (default: 20)
+- `iopaint_no_half`: Disable FP16 precision (default: False)
+- `iopaint_size_limit`: Maximum image dimension in pixels (default: "2000")
+
+Configure mode via API parameter `inpaint_mode` or CLI `--inpaint` flag.
 
 ### Text Rendering Adaptive Algorithm
 

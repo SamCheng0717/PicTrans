@@ -1,6 +1,6 @@
 """
 背景修复模块 - 擦除原文字
-支持 OpenCV（默认）和 iopaint（AI 模式，待实现）
+支持 OpenCV（默认）和 iopaint（AI 模式）
 """
 import cv2
 import numpy as np
@@ -8,6 +8,7 @@ from typing import List, Tuple, Optional
 
 from ..config import config
 from ..models.schemas import TextBox
+from .iopaint_client import IOPaintClient
 
 
 class Inpainter:
@@ -18,7 +19,7 @@ class Inpainter:
         初始化修复器
 
         Args:
-            mode: 修复模式 - "opencv" 或 "iopaint" (iopaint 待实现)
+            mode: 修复模式 - "opencv" 或 "iopaint"
         """
         self.mode = mode
         self.opencv_radius = config.inpaint.opencv_radius
@@ -26,6 +27,9 @@ class Inpainter:
         self.sample_padding = config.inpaint.sample_padding
         self.blur_kernel = config.inpaint.blur_kernel
         self.mask_expand = getattr(config.inpaint, 'mask_expand', 8)
+
+        # IOPaint 客户端（延迟初始化）
+        self._iopaint_client: Optional[IOPaintClient] = None
 
     def inpaint(self, image: np.ndarray, text_boxes: List[TextBox]) -> np.ndarray:
         """
@@ -45,26 +49,24 @@ class Inpainter:
         clusters = self._cluster_boxes(text_boxes)
         print(f"[Inpaint] 聚类结果: {len(text_boxes)} 个框 -> {len(clusters)} 个聚类")
 
-        # 当前仅支持 opencv，未来将添加 iopaint
+        # 根据模式选择修复方法
         if self.mode == "opencv":
             return self._inpaint_opencv(image, text_boxes, clusters)
         elif self.mode == "iopaint":
-            # TODO: 集成 iopaint 后实现
-            print(f"[Inpaint] iopaint 模式尚未实现，回退到 opencv")
-            return self._inpaint_opencv(image, text_boxes, clusters)
+            return self._inpaint_iopaint(image, text_boxes, clusters)
         else:
             print(f"[Inpaint] 未知模式 '{self.mode}'，使用默认 opencv")
             return self._inpaint_opencv(image, text_boxes, clusters)
 
-    def _cluster_boxes(self, text_boxes: List[TextBox], y_threshold_ratio: float = 1.5) -> List[List[TextBox]]:
+    def _cluster_boxes(self, text_boxes: List[TextBox], y_threshold_ratio: float = None) -> List[List[TextBox]]:
         """
         聚类相邻的文字框
 
-        规则: x轴有重叠 + y距离 < 1.5 × 平均高度 -> 合并到同一聚类
+        规则: x轴有重叠 + y距离 < y_threshold_ratio × 平均高度 -> 合并到同一聚类
 
         Args:
             text_boxes: 文字框列表
-            y_threshold_ratio: y方向阈值比例
+            y_threshold_ratio: y方向阈值比例（None则从config读取，越小越不容易合并，0=完全不聚类）
 
         Returns:
             聚类后的文字框列表，每个元素是一组相邻的文字框
@@ -72,10 +74,18 @@ class Inpainter:
         if not text_boxes:
             return []
 
+        # 从配置读取默认值
+        if y_threshold_ratio is None:
+            y_threshold_ratio = config.inpaint.y_threshold_ratio
+
         # 过滤掉 skip 的框
         active_boxes = [b for b in text_boxes if not b.skip]
         if not active_boxes:
             return []
+
+        # 如果阈值为0，完全禁用聚类，每个框独立处理
+        if y_threshold_ratio == 0:
+            return [[box] for box in active_boxes]
 
         # 计算平均高度
         avg_height = sum(b.height for b in active_boxes) / len(active_boxes)
@@ -354,6 +364,66 @@ class Inpainter:
         is_gradient = np.mean(std_color) > 30
 
         return (bg_color, is_gradient)
+
+    def _inpaint_iopaint(
+        self,
+        image: np.ndarray,
+        text_boxes: List[TextBox],
+        clusters: List[List[TextBox]]
+    ) -> np.ndarray:
+        """
+        使用 IOPaint AI 模型进行背景修复
+
+        Args:
+            image: 原始图像（BGR numpy array）
+            text_boxes: 文字框列表
+            clusters: 聚类后的文字框
+
+        Returns:
+            修复后的图像（BGR numpy array）
+
+        Raises:
+            httpx.HTTPStatusError: IOPaint API 错误
+            httpx.TimeoutException: 请求超时
+        """
+        import asyncio
+        import concurrent.futures
+
+        # 延迟初始化 IOPaint 客户端
+        if self._iopaint_client is None:
+            self._iopaint_client = IOPaintClient()
+
+        h, w = image.shape[:2]
+        print(f"[Inpaint-IOPaint] 图像尺寸: {w}x{h}, 使用 AI 模式")
+
+        # 创建 mask（使用聚类 mask 提高效果）
+        if clusters:
+            mask = self._create_cluster_mask(image.shape, clusters)
+        else:
+            mask = self._create_mask(image.shape, text_boxes)
+
+        # 调用 IOPaint API（在新事件循环中运行，避免冲突）
+        def run_in_new_loop():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(self._iopaint_client.inpaint(image, mask))
+            finally:
+                loop.close()
+
+        # 执行修复
+        try:
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(run_in_new_loop)
+                result = future.result()
+
+            print(f"[Inpaint-IOPaint] AI 修复完成")
+            return result
+
+        except Exception as e:
+            # 用户要求：直接报错，不回退到 OpenCV
+            print(f"[Inpaint-IOPaint] AI 修复失败: {e}")
+            raise RuntimeError(f"IOPaint 修复失败: {e}") from e
 
     def inpaint_single(
         self,

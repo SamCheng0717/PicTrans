@@ -1,6 +1,7 @@
 """
 DeepSeek 翻译客户端 - 电商语义翻译
 """
+
 import httpx
 from typing import List, Dict, Optional
 
@@ -56,45 +57,59 @@ class Translator:
 1. [翻译结果]
 2. [翻译结果]
 ..."""
-
+        print(prompt)
         return prompt
 
-    def _parse_response(self, response_text: str, original_texts: List[str]) -> Dict[str, str]:
+    def _parse_response(
+        self, response_text: str, original_texts: List[str]
+    ) -> Dict[str, str]:
         """解析翻译响应"""
+        print(response_text)
         translations = {}
         lines = response_text.strip().split("\n")
 
         for i, original in enumerate(original_texts):
+            translated = None
+
             # 尝试匹配带编号的行
             for line in lines:
                 line = line.strip()
-                # 匹配格式: "1. xxx" 或 "1、xxx" 或 "1.xxx"
-                if line.startswith(f"{i+1}.") or line.startswith(f"{i+1}、") or line.startswith(f"{i+1}:"):
-                    # 移除编号前缀
-                    translated = line.split(".", 1)[-1].split("、", 1)[-1].split(":", 1)[-1].strip()
-                    translations[original] = translated
+                # 匹配格式: "1. xxx" 或 "1、xxx" 或 "1: xxx"
+                prefix_dot = f"{i + 1}."
+                prefix_chinese = f"{i + 1}、"
+                prefix_colon = f"{i + 1}:"
+
+                if line.startswith(prefix_dot):
+                    translated = line[len(prefix_dot):].strip()
+                    break
+                elif line.startswith(prefix_chinese):
+                    translated = line[len(prefix_chinese):].strip()
+                    break
+                elif line.startswith(prefix_colon):
+                    translated = line[len(prefix_colon):].strip()
                     break
             else:
                 # 如果没找到匹配，尝试按顺序取
                 if i < len(lines):
                     line = lines[i].strip()
                     # 移除可能的编号前缀
-                    for prefix in [f"{i+1}.", f"{i+1}、", f"{i+1}:"]:
+                    for prefix in [f"{i + 1}.", f"{i + 1}、", f"{i + 1}:"]:
                         if line.startswith(prefix):
-                            line = line[len(prefix):].strip()
+                            line = line[len(prefix) :].strip()
                             break
-                    translations[original] = line
-                else:
-                    # 保留原文
-                    translations[original] = original
+                    translated = line
+
+            # 兜底：如果翻译为空或None，使用原文
+            if not translated:
+                translated = original
+                print(f"[Translator] 警告: '{original}' 翻译为空，使用原文")
+
+            translations[original] = translated
 
         return translations
 
     async def translate(
-        self,
-        texts: List[str],
-        target_lang: str = "ko",
-        source_lang: str = "zh"
+        self, texts: List[str], target_lang: str = "ko", source_lang: str = "zh"
     ) -> Dict[str, str]:
         """
         批量翻译文字
@@ -114,24 +129,18 @@ class Translator:
 
         payload = {
             "model": self.model,
-            "messages": [
-                {"role": "user", "content": prompt}
-            ],
+            "messages": [{"role": "user", "content": prompt}],
             "max_tokens": self.max_tokens,
-            "temperature": self.temperature
+            "temperature": self.temperature,
         }
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(
-                self.api_url,
-                json=payload,
-                headers=headers
-            )
+            response = await client.post(self.api_url, json=payload, headers=headers)
             response.raise_for_status()
 
         result = response.json()
@@ -143,7 +152,7 @@ class Translator:
         self,
         text_boxes: List[TextBox],
         target_lang: str = "ko",
-        source_lang: str = "zh"
+        source_lang: str = "zh",
     ) -> List[TextBox]:
         """
         翻译文字框列表
@@ -176,21 +185,20 @@ class Translator:
         return text_boxes
 
     def translate_sync(
-        self,
-        texts: List[str],
-        target_lang: str = "ko",
-        source_lang: str = "zh"
+        self, texts: List[str], target_lang: str = "ko", source_lang: str = "zh"
     ) -> Dict[str, str]:
         """同步版本的翻译方法"""
         import asyncio
+
         return asyncio.run(self.translate(texts, target_lang, source_lang))
 
     def translate_boxes_sync(
         self,
         text_boxes: List[TextBox],
         target_lang: str = "ko",
-        source_lang: str = "zh"
+        source_lang: str = "zh",
     ) -> List[TextBox]:
         """同步版本的文字框翻译方法"""
         import asyncio
+
         return asyncio.run(self.translate_boxes(text_boxes, target_lang, source_lang))

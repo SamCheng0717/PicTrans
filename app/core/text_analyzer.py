@@ -468,16 +468,14 @@ class TextAnalyzer:
 
     def _detect_text_color(self, roi: np.ndarray, bg_color: Tuple[int, int, int] = None) -> Tuple[int, int, int]:
         """
-        多策略文字颜色检测（主方法）
+        改进的文字颜色检测：K-means聚类 + 占比分析
 
-        策略层级：
-        1. HSV增强的OTSU检测（主策略）
-        2. 边缘检测辅助（置信度<0.7时启用）
-        3. K-means聚类分析（置信度<0.5时启用）
+        核心思路：从原图ROI使用K-means聚类提取2种主色，
+        占比小的是文字色，占比大的是背景色
 
         Args:
-            roi: 文字区域图像 (BGR)
-            bg_color: 背景色 (RGB)，用于对比
+            roi: 文字区域图像 (BGR) - 来自原图
+            bg_color: 背景色 (RGB)，用于验证
 
         Returns:
             文字颜色 (RGB)
@@ -487,39 +485,64 @@ class TextAnalyzer:
 
         color_config = config.color_detection
 
-        # 策略1: HSV增强的OTSU
-        text_color, confidence = self._detect_color_otsu_hsv(roi, bg_color)
+        # K-means聚类提取2种主色
+        pixels = roi.reshape(-1, 3).astype(np.float32)
 
-        # 如果置信度高，直接返回
-        if confidence > 0.7:
+        # 如果像素太少，直接使用中位数
+        if len(pixels) < 10:
+            median_bgr = np.median(pixels, axis=0).astype(int)
+            return (int(median_bgr[2]), int(median_bgr[1]), int(median_bgr[0]))
+
+        try:
+            criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1.0)
+            _, labels, centers = cv2.kmeans(
+                pixels, 2, None, criteria, 10, cv2.KMEANS_PP_CENTERS
+            )
+
+            # 计算每个聚类的占比
+            unique, counts = np.unique(labels, return_counts=True)
+            ratios = counts / len(labels)
+
+            # 转换聚类中心为RGB
+            color0 = (int(centers[0][2]), int(centers[0][1]), int(centers[0][0]))
+            color1 = (int(centers[1][2]), int(centers[1][1]), int(centers[1][0]))
+
+            # 策略：占比小的更可能是文字
+            if ratios[0] < 0.4:  # 聚类0占比<40%
+                text_color = color0
+                bg_color_detected = color1
+            else:
+                text_color = color1
+                bg_color_detected = color0
+
             if color_config.debug_mode:
-                print(f"[ColorDetect] 使用策略1结果，置信度足够高")
+                print(f"[ColorDetect] K-means聚类: 颜色0=RGB{color0} ({ratios[0]:.1%}), 颜色1=RGB{color1} ({ratios[1]:.1%})")
+                print(f"[ColorDetect] 选择文字色: RGB{text_color}")
+
+            # 验证：文字色应该与背景色有足够对比度
+            if bg_color:
+                contrast = self._perceptual_color_distance(text_color, bg_color)
+                if contrast < 50:  # 对比度不足，使用黑白兜底
+                    bg_brightness = self._calculate_brightness(bg_color)
+                    fallback_color = (0, 0, 0) if bg_brightness > 210 else (255, 255, 255)
+
+                    if color_config.debug_mode:
+                        print(f"[ColorDetect] 对比度不足({contrast:.1f}), 兜底策略: RGB{text_color} -> RGB{fallback_color}")
+
+                    text_color = fallback_color
+
             return text_color
 
-        # 策略2: 边缘检测辅助
-        if color_config.use_edge_detection:
-            text_color_edge, confidence_edge = self._detect_color_edge_based(roi, bg_color)
+        except Exception as e:
+            # K-means失败，使用兜底策略
+            if color_config.debug_mode:
+                print(f"[ColorDetect] K-means失败: {e}, 使用兜底策略")
 
-            if confidence_edge > confidence:
-                text_color = text_color_edge
-                confidence = confidence_edge
+            if bg_color:
+                bg_brightness = self._calculate_brightness(bg_color)
+                return (0, 0, 0) if bg_brightness > 210 else (255, 255, 255)
 
-        # 策略3: K-means聚类（如果启用且置信度仍低）
-        if color_config.use_kmeans_fallback and confidence < 0.5:
-            text_color_kmeans, confidence_kmeans = self._detect_color_kmeans(roi, bg_color)
-
-            if confidence_kmeans > confidence:
-                text_color = text_color_kmeans
-                confidence = confidence_kmeans
-
-        # 最终验证和调整
-        if bg_color:
-            text_color = self._validate_and_adjust_color(text_color, bg_color)
-
-        if color_config.debug_mode:
-            print(f"[ColorDetect] 最终选择: RGB{text_color}, confidence={confidence:.2f}")
-
-        return text_color
+            return (0, 0, 0)
 
     def _validate_and_adjust_color(
         self,
