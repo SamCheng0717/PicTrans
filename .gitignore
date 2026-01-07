@@ -1,4 +1,6 @@
 *.pyc
 *.zip
-output/
+/output/
 fonts
+/papago/
+tests/output/
