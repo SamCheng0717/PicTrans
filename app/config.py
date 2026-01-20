@@ -71,6 +71,17 @@ class FontConfig:
             },
             "default": "MiSans-Regular.ttf"
         },
+        "th": {
+            "dir": "AlibabaSansThai",
+            "weights": {
+                "light": "AlibabaSansThai-Rg/AlibabaSansThai-Rg.ttf",
+                "regular": "AlibabaSansThai-Rg/AlibabaSansThai-Rg.ttf",
+                "medium": "AlibabaSansThai-Md/AlibabaSansThai-Md.ttf",
+                "bold": "AlibabaSansThai-Bd/AlibabaSansThai-Bd.ttf",
+                "heavy": "AlibabaSansThai-Bd/AlibabaSansThai-Bd.ttf",
+            },
+            "default": "AlibabaSansThai-Rg/AlibabaSansThai-Rg.ttf"
+        },
         "default": {
             "dir": "MiSans/ttf",
             "weights": {
