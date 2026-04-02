@@ -18,7 +18,8 @@ load_dotenv(BASE_DIR / ".env")
 @dataclass
 class OCRConfig:
     """DeepSeek-OCR 配置"""
-    api_url: str = "https://ai.beise.com:50111/app/ai/DeepSeekOcr/vllm"
+    api_url: str = "https://api.siliconflow.cn/v1/chat/completions"
+    api_key: str = field(default_factory=lambda: os.environ.get("SILICONFLOW_API_KEY", ""))
     model: str = "deepseek-ai/DeepSeek-OCR"
     max_tokens: int = 2048
     temperature: float = 0

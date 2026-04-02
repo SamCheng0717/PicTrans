@@ -53,6 +53,7 @@ class OCRClient:
 
     def __init__(self):
         self.api_url = config.ocr.api_url
+        self.api_key = config.ocr.api_key
         self.model = config.ocr.model
         self.max_tokens = config.ocr.max_tokens
         self.temperature = config.ocr.temperature
@@ -267,8 +268,9 @@ class OCRClient:
         }
 
         # 发送请求
-        async with httpx.AsyncClient(timeout=self.timeout, verify=False) as client:
-            response = await client.post(self.api_url, json=payload)
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.post(self.api_url, json=payload, headers=headers)
             response.raise_for_status()
 
         # 解析响应
