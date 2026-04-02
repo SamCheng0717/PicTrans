@@ -33,10 +33,20 @@ class OCRConfig:
 
 @dataclass
 class TranslatorConfig:
-    """DeepSeek 翻译配置"""
-    api_url: str = "https://api.deepseek.com/v1/chat/completions"
-    api_key: str = field(default_factory=lambda: os.environ.get("DEEPSEEK_API_KEY", ""))
-    model: str = "deepseek-chat"
+    """翻译配置 - 支持多后端切换"""
+    # 当前后端: hunyuan / deepseek
+    backend: str = field(default_factory=lambda: os.environ.get("TRANSLATOR_BACKEND", "hunyuan"))
+
+    # 混元 VLLM 配置（默认）
+    hunyuan_api_url: str = "http://192.168.103.43:8003/v1/chat/completions"
+    hunyuan_api_key: str = field(default_factory=lambda: os.environ.get("HUNYUAN_API_KEY", ""))
+    hunyuan_model: str = "HY-MT1.5-7B"
+
+    # DeepSeek 配置
+    deepseek_api_url: str = "https://api.deepseek.com/v1/chat/completions"
+    deepseek_api_key: str = field(default_factory=lambda: os.environ.get("DEEPSEEK_API_KEY", ""))
+    deepseek_model: str = "deepseek-chat"
+
     max_tokens: int = 2048
     temperature: float = 0.3
     timeout: int = 30
@@ -205,11 +215,44 @@ class AppConfig:
 
     # 支持的语言
     supported_languages: dict = field(default_factory=lambda: {
-        "ko": "韩文",
-        "ja": "日文",
-        "en": "英文",
-        "th": "泰文",
-        "zh-TW": "繁体中文",
+        "zh": "中文",
+        "en": "英语",
+        "fr": "法语",
+        "pt": "葡萄牙语",
+        "es": "西班牙语",
+        "ja": "日语",
+        "tr": "土耳其语",
+        "ru": "俄语",
+        "ar": "阿拉伯语",
+        "ko": "韩语",
+        "th": "泰语",
+        "it": "意大利语",
+        "de": "德语",
+        "vi": "越南语",
+        "ms": "马来语",
+        "id": "印尼语",
+        "tl": "菲律宾语",
+        "hi": "印地语",
+        "zh-Hant": "繁体中文",
+        "pl": "波兰语",
+        "cs": "捷克语",
+        "nl": "荷兰语",
+        "km": "高棉语",
+        "my": "缅甸语",
+        "fa": "波斯语",
+        "gu": "古吉拉特语",
+        "ur": "乌尔都语",
+        "te": "泰卢固语",
+        "mr": "马拉地语",
+        "he": "希伯来语",
+        "bn": "孟加拉语",
+        "ta": "泰米尔语",
+        "uk": "乌克兰语",
+        "bo": "藏语",
+        "kk": "哈萨克语",
+        "mn": "蒙古语",
+        "ug": "维吾尔语",
+        "yue": "粤语",
     })
 
     def __post_init__(self):

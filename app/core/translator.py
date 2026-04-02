@@ -10,34 +10,48 @@ from ..models.schemas import TextBox
 
 
 class Translator:
-    """DeepSeek 翻译客户端"""
+    """翻译客户端 - 支持混元/DeepSeek 后端"""
 
     # 语言名称映射
     LANGUAGE_NAMES = {
-        "zh": "中文",
-        "ko": "韩文",
-        "ja": "日文",
-        "en": "英文",
-        "th": "泰文",
-        "zh-TW": "繁体中文",
-        "vi": "越南文",
-        "id": "印尼文",
-        "ms": "马来文",
+        "zh": "中文", "en": "英语", "fr": "法语", "pt": "葡萄牙语",
+        "es": "西班牙语", "ja": "日语", "tr": "土耳其语", "ru": "俄语",
+        "ar": "阿拉伯语", "ko": "韩语", "th": "泰语", "it": "意大利语",
+        "de": "德语", "vi": "越南语", "ms": "马来语", "id": "印尼语",
+        "tl": "菲律宾语", "hi": "印地语", "zh-Hant": "繁体中文",
+        "pl": "波兰语", "cs": "捷克语", "nl": "荷兰语", "km": "高棉语",
+        "my": "缅甸语", "fa": "波斯语", "gu": "古吉拉特语", "ur": "乌尔都语",
+        "te": "泰卢固语", "mr": "马拉地语", "he": "希伯来语", "bn": "孟加拉语",
+        "ta": "泰米尔语", "uk": "乌克兰语", "bo": "藏语", "kk": "哈萨克语",
+        "mn": "蒙古语", "ug": "维吾尔语", "yue": "粤语",
     }
 
-    def __init__(self):
-        self.api_url = config.translator.api_url
-        self.api_key = config.translator.api_key
-        self.model = config.translator.model
-        self.max_tokens = config.translator.max_tokens
-        self.temperature = config.translator.temperature
-        self.timeout = config.translator.timeout
+    def __init__(self, backend: str = None):
+        cfg = config.translator
+        self.backend = backend or cfg.backend
+
+        if self.backend == "hunyuan":
+            self.api_url = cfg.hunyuan_api_url
+            self.api_key = cfg.hunyuan_api_key
+            self.model = cfg.hunyuan_model
+        else:
+            self.api_url = cfg.deepseek_api_url
+            self.api_key = cfg.deepseek_api_key
+            self.model = cfg.deepseek_model
+
+        self.max_tokens = cfg.max_tokens
+        self.temperature = cfg.temperature
+        self.timeout = cfg.timeout
 
     def _build_prompt(self, texts: List[str], target_lang: str) -> str:
-        """构建电商语义翻译Prompt"""
+        """构建翻译Prompt（根据后端选择不同风格）"""
         lang_name = self.LANGUAGE_NAMES.get(target_lang, target_lang)
 
-        prompt = f"""你是跨境电商商品文案翻译专家。请将以下中文商品卖点翻译为【{lang_name}】。
+        if self.backend == "hunyuan":
+            source_text = "\n".join(f"{i}. {t}" for i, t in enumerate(texts, 1))
+            prompt = f"将以下文本翻译为{lang_name}，注意只需要输出翻译后的结果，不要额外解释：\n\n{source_text}\n\n请按编号输出翻译结果："
+        else:
+            prompt = f"""你是跨境电商商品文案翻译专家。请将以下中文商品卖点翻译为【{lang_name}】。
 
 要求：
 1. 保持简短精炼，适合商品图展示
@@ -49,15 +63,10 @@ class Translator:
 
 待翻译文案：
 """
-        for i, text in enumerate(texts, 1):
-            prompt += f"{i}. {text}\n"
+            for i, text in enumerate(texts, 1):
+                prompt += f"{i}. {text}\n"
+            prompt += "\n请直接输出翻译结果，每行一个，格式：\n1. [翻译结果]\n2. [翻译结果]\n..."
 
-        prompt += f"""
-请直接输出翻译结果，每行一个，格式如下：
-1. [翻译结果]
-2. [翻译结果]
-..."""
-        # print(prompt)
         return prompt
 
     def _parse_response(

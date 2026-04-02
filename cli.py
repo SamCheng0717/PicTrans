@@ -218,6 +218,13 @@ def main():
     )
 
     parser.add_argument(
+        "--translator",
+        choices=["hunyuan", "deepseek"],
+        default=None,
+        help="翻译后端: hunyuan(默认) 或 deepseek"
+    )
+
+    parser.add_argument(
         "--compare",
         action="store_true",
         help="仅生成原图与翻译图的对比图（水平拼接），不保存单独的翻译图"
@@ -235,6 +242,10 @@ def main():
 
     # Inpaint 模式
     inpaint_mode = args.inpaint
+
+    # 翻译后端切换
+    if args.translator:
+        config.translator.backend = args.translator
 
     # 查找图片
     images = find_images(args.input)
