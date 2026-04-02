@@ -49,7 +49,7 @@ class Translator:
 
         if self.backend == "hunyuan":
             source_text = "\n".join(f"{i}. {t}" for i, t in enumerate(texts, 1))
-            prompt = f"将以下文本翻译为{lang_name}，注意只需要输出翻译后的结果，不要额外解释：\n\n{source_text}\n\n请按编号输出翻译结果："
+            prompt = f"将以下文本翻译为{lang_name}，注意只需要输出翻译后的结果，不要额外解释：\n\n {source_text}"
         else:
             prompt = f"""你是跨境电商商品文案翻译专家。请将以下中文商品卖点翻译为【{lang_name}】。
 

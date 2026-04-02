@@ -123,7 +123,10 @@ class OCRClient:
         matches = re.findall(pattern, response_text)
 
         for idx, match in enumerate(matches):
-            text = match[0].strip()
+            # 清理 SiliconFlow 返回的特殊 token: <|ref|>...<|/ref|><|det|>
+            text = re.sub(r'<\|[^|]+\|>', '', match[0]).strip()
+            if not text:
+                continue
             # 原始OCR归一化坐标 (0-999)
             raw_bbox = [int(match[1]), int(match[2]), int(match[3]), int(match[4])]
 
