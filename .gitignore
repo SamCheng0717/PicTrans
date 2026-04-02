@@ -5,3 +5,4 @@ fonts
 /papago/
 tests/output/
 .claude/settings.local.json
+.env

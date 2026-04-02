@@ -5,10 +5,14 @@ import os
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, List
+from dotenv import load_dotenv
 
 
 # 项目根目录
 BASE_DIR = Path(__file__).parent.parent.resolve()
+
+# 加载 .env 文件
+load_dotenv(BASE_DIR / ".env")
 
 
 @dataclass
@@ -30,7 +34,7 @@ class OCRConfig:
 class TranslatorConfig:
     """DeepSeek 翻译配置"""
     api_url: str = "https://api.deepseek.com/v1/chat/completions"
-    api_key: str = "sk-9ff002aa634b490687c71b2b431d9d13"
+    api_key: str = field(default_factory=lambda: os.environ.get("DEEPSEEK_API_KEY", ""))
     model: str = "deepseek-chat"
     max_tokens: int = 2048
     temperature: float = 0.3
