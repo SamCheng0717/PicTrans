@@ -77,6 +77,7 @@ def translate_image():
             source_lang = request.form.get("source_lang", "zh")
             target_lang = request.form.get("target_lang", "ko")
             inpaint_mode = request.form.get("inpaint_mode", "opencv")
+            return_type = request.form.get("return_type", "json")
 
         else:
             # JSON方式
@@ -117,6 +118,7 @@ def translate_image():
             source_lang = data.get("source_lang", "zh")
             target_lang = data.get("target_lang", "ko")
             inpaint_mode = data.get("inpaint_mode", "opencv")
+            return_type = data.get("return_type", "json")
 
         # 创建任务
         # 注意: skip_* 参数已移除，现在使用固定的过滤规则
@@ -130,6 +132,10 @@ def translate_image():
 
         # 执行处理
         result = asyncio.run(pipeline.process(task))
+
+        # 直接返回图片
+        if result.success and return_type == "file":
+            return send_file(result.output_path, mimetype="image/jpeg")
 
         # 构建响应
         if result.success:
