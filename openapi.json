@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "http://192.168.103.66:50000",
+      "url": "http://apis.beise.com:50144/6795669d/",
       "description": "内网服务器"
     }
   ],
