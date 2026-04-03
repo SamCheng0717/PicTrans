@@ -1,0 +1,298 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "PicTrans 图片翻译 API",
+    "description": "电商商品图片多语言翻译系统。上传包含文字的商品图片，自动识别文字、翻译并渲染回图片。",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://192.168.103.66:50000",
+      "description": "内网服务器"
+    }
+  ],
+  "tags": [
+    { "name": "翻译", "description": "图片翻译相关接口" },
+    { "name": "系统", "description": "服务状态与配置" }
+  ],
+  "paths": {
+    "/api/translate": {
+      "post": {
+        "tags": ["翻译"],
+        "summary": "翻译图片",
+        "description": "上传商品图片，自动完成 OCR 识别 → 翻译 → 背景修复 → 文字渲染，返回翻译后的图片或详细结果。\n\n支持两种请求格式：\n- `multipart/form-data`：直接上传图片文件（推荐）\n- `application/json`：传入 Base64 编码的图片",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["image"],
+                "properties": {
+                  "image": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "图片文件，支持 jpg / jpeg / png / webp / gif"
+                  },
+                  "target_lang": {
+                    "type": "string",
+                    "default": "ko",
+                    "description": "目标语言代码，可选值见 /api/languages",
+                    "example": "ko"
+                  },
+                  "source_lang": {
+                    "type": "string",
+                    "default": "zh",
+                    "description": "源语言代码",
+                    "example": "zh"
+                  },
+                  "inpaint_mode": {
+                    "type": "string",
+                    "enum": ["opencv", "iopaint"],
+                    "default": "opencv",
+                    "description": "背景修复模式。opencv：速度快，适合纯色背景；iopaint：AI 修复，适合复杂背景（需单独部署 IOPaint 服务）"
+                  },
+                  "return_type": {
+                    "type": "string",
+                    "enum": ["json", "file"],
+                    "default": "json",
+                    "description": "返回格式。json：返回 JSON 详细结果；file：直接返回翻译后的图片文件"
+                  }
+                }
+              }
+            },
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["image"],
+                "properties": {
+                  "image": {
+                    "type": "string",
+                    "description": "Base64 编码的图片，支持带 data URI 前缀（如 data:image/jpeg;base64,...）或纯 Base64 字符串"
+                  },
+                  "target_lang": {
+                    "type": "string",
+                    "default": "ko",
+                    "description": "目标语言代码",
+                    "example": "ko"
+                  },
+                  "source_lang": {
+                    "type": "string",
+                    "default": "zh",
+                    "description": "源语言代码"
+                  },
+                  "inpaint_mode": {
+                    "type": "string",
+                    "enum": ["opencv", "iopaint"],
+                    "default": "opencv",
+                    "description": "背景修复模式"
+                  },
+                  "return_type": {
+                    "type": "string",
+                    "enum": ["json", "file"],
+                    "default": "json",
+                    "description": "返回格式"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "处理成功",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TranslateResponse" },
+                "example": {
+                  "success": true,
+                  "message": "处理成功",
+                  "output_path": "/data/wwwroot/PicTrans/output/test_ko_20260403_094409.jpg",
+                  "output_base64": null,
+                  "detected_texts": [
+                    { "id": "t_000", "text": "秘制老卤", "bbox": [0, 44, 152, 90], "role": "feature", "skip": false }
+                  ],
+                  "translated_texts": [
+                    { "id": "t_000", "original": "秘制老卤", "translated": "비밀 레시피로 만든 장육" }
+                  ],
+                  "stats": {
+                    "total_texts": 6,
+                    "translated_count": 6,
+                    "skipped_count": 0,
+                    "ocr_time_ms": 1717,
+                    "translate_time_ms": 907,
+                    "render_time_ms": 63,
+                    "total_time_ms": 2803
+                  }
+                }
+              },
+              "image/jpeg": {
+                "description": "当 return_type=file 时，直接返回翻译后的图片二进制流",
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "example": { "success": false, "message": "缺少图片文件" }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "example": { "success": false, "message": "服务器错误: ..." }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/output/{filename}": {
+      "get": {
+        "tags": ["翻译"],
+        "summary": "获取翻译结果图片",
+        "description": "通过文件名获取已翻译的图片。文件名从 /api/translate 的响应字段 output_path 中提取最后一段即可。",
+        "parameters": [
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "输出文件名",
+            "example": "test_ko_20260403_094409.jpg"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "图片文件",
+            "content": {
+              "image/jpeg": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "404": {
+            "description": "文件不存在",
+            "content": {
+              "application/json": {
+                "example": { "error": "文件不存在" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "tags": ["系统"],
+        "summary": "健康检查",
+        "description": "检查服务是否正常运行",
+        "responses": {
+          "200": {
+            "description": "服务正常",
+            "content": {
+              "application/json": {
+                "example": { "status": "ok", "version": "1.0.0" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/languages": {
+      "get": {
+        "tags": ["系统"],
+        "summary": "获取支持的语言列表",
+        "description": "返回所有支持的目标语言及其代码",
+        "responses": {
+          "200": {
+            "description": "语言列表",
+            "content": {
+              "application/json": {
+                "example": {
+                  "languages": {
+                    "ko": "韩语", "ja": "日语", "en": "英语",
+                    "th": "泰语", "vi": "越南语", "id": "印尼语",
+                    "zh-Hant": "繁体中文"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "TranslateResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean", "description": "是否处理成功" },
+          "message": { "type": "string", "description": "处理结果说明" },
+          "output_path": { "type": "string", "nullable": true, "description": "服务器上的输出文件路径" },
+          "output_base64": { "type": "string", "nullable": true, "description": "Base64 编码的输出图片（当前版本为 null）" },
+          "detected_texts": {
+            "type": "array",
+            "description": "OCR 识别到的所有文字框",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string", "description": "文字框唯一标识" },
+                "text": { "type": "string", "description": "识别到的原始文字" },
+                "bbox": {
+                  "type": "array",
+                  "items": { "type": "integer" },
+                  "description": "像素坐标 [x1, y1, x2, y2]"
+                },
+                "role": { "type": "string", "description": "文字角色分类（feature / brand / price 等）" },
+                "skip": { "type": "boolean", "description": "是否跳过翻译" }
+              }
+            }
+          },
+          "translated_texts": {
+            "type": "array",
+            "description": "翻译结果列表",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "original": { "type": "string", "description": "原文" },
+                "translated": { "type": "string", "description": "译文" }
+              }
+            }
+          },
+          "stats": {
+            "type": "object",
+            "description": "处理耗时统计",
+            "properties": {
+              "total_texts": { "type": "integer", "description": "识别到的文字总数" },
+              "translated_count": { "type": "integer", "description": "实际翻译的文字数" },
+              "skipped_count": { "type": "integer", "description": "跳过翻译的文字数" },
+              "ocr_time_ms": { "type": "integer", "description": "OCR 耗时（毫秒）" },
+              "translate_time_ms": { "type": "integer", "description": "翻译耗时（毫秒）" },
+              "render_time_ms": { "type": "integer", "description": "渲染耗时（毫秒）" },
+              "total_time_ms": { "type": "integer", "description": "总耗时（毫秒）" }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean", "example": false },
+          "message": { "type": "string", "description": "错误信息" }
+        }
+      }
+    }
+  }
+}
