@@ -8,7 +8,7 @@
   "servers": [
     {
       "url": "http://apis.beise.com:50144/6795669d/",
-      "description": "内网服务器"
+      "description": "APIPark 反向代理服务器"
     }
   ],
   "tags": [
