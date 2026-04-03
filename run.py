@@ -39,8 +39,10 @@ def create_app():
     return app
 
 
+# 供 uWSGI 直接引用的顶层变量
+app = create_app()
+
 if __name__ == "__main__":
-    app = create_app()
     print(f"输出目录: {config.output_dir}")
     print("启动服务: http://localhost:5000")
     app.run(host="0.0.0.0", port=5000, debug=True)
