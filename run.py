@@ -21,6 +21,12 @@ def create_app():
     # 注册蓝图
     app.register_blueprint(api_bp)
 
+    # 强制关闭连接，避免反向代理复用已关闭连接
+    @app.after_request
+    def add_connection_close(response):
+        response.headers["Connection"] = "close"
+        return response
+
     # 根路由
     @app.route("/")
     def index():
