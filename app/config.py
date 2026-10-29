@@ -38,7 +38,7 @@ class TranslatorConfig:
     backend: str = field(default_factory=lambda: os.environ.get("TRANSLATOR_BACKEND", "hunyuan"))
 
     # 混元 VLLM 配置（默认）
-    hunyuan_api_url: str = "http://192.168.103.43:8003/v1/chat/completions"
+    hunyuan_api_url: str = "https://apis.beise.com:50144/c12e7f71/chat/completions"
     hunyuan_api_key: str = field(default_factory=lambda: os.environ.get("HUNYUAN_API_KEY", ""))
     hunyuan_model: str = "HY-MT1.5-7B"
 
